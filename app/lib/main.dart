@@ -1,41 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:meditation_companion/config/env_config.dart';
-import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
-import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
-import 'package:meditation_companion/features/auth/repository/supabase_auth_repository.dart';
-import 'package:meditation_companion/features/auth/views/auth_wrapper.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
+import 'package:meditation_companion/features/meditation/services/audio_service.dart';
+import 'package:meditation_companion/features/meditation/services/mock_audio_service.dart';
+import 'package:meditation_companion/features/meditation/services/mock_timer_service.dart';
+import 'package:meditation_companion/features/meditation/services/timer_service.dart';
+import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  await Supabase.initialize(
-    url: EnvConfig.supabaseUrl,
-    anonKey: EnvConfig.supabaseAnonKey,
-  );
-
-  runApp(const MyApp());
+void main() {
+  runApp(const MainApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => AuthBloc(
-        authRepository: SupabaseAuthRepository(
-          Supabase.instance.client,
+    return MaterialApp(
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.light,
         ),
-      )..add(AuthCheckRequested()),
-      child: MaterialApp(
-        title: 'Meditation Companion',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
         ),
-        home: const AuthWrapper(),
+        useMaterial3: true,
+      ),
+      home: MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider<TimerService>(
+            create: (_) => MockTimerService(),
+          ),
+          RepositoryProvider<AudioService>(
+            create: (_) => MockAudioService(),
+          ),
+        ],
+        child: BlocProvider(
+          create: (context) => MeditationBloc(
+            timerService: context.read<TimerService>(),
+            audioService: context.read<AudioService>(),
+          ),
+          child: const MeditationSessionScreen(),
+        ),
       ),
     );
   }
