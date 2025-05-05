@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "meditation_companion (Chrome)",
+            "request": "launch",
+            "type": "dart",
+            "program": "app/lib/main.dart",
+            "args": [
+                "-d",
+                "chrome"
+            ]
+        },
+        {
+            "name": "meditation_companion",
+            "request": "launch",
+            "type": "dart",
+            "program": "app/lib/main.dart"
+        },
+        {
+            "name": "meditation_companion (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "program": "app/lib/main.dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "meditation_companion (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "program": "app/lib/main.dart",
+            "flutterMode": "release"
+        }
+    ]
+}
