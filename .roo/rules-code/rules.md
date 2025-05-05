@@ -162,3 +162,16 @@ VERIFY before completion:
 [ ] Naming follows conventions
 [ ] Documentation exists
 [ ] No prevented patterns used
+```
+
+## Key challenges and lessons learned during implementation:
+
+Command Line Operations:
+
+Mistake: Combining multiple commands with `&&` and trying to `cd` into directories unnecessarily
+Lesson: Execute one command at a time and respect the working directory provided in the environment
+
+App Execution:
+
+Mistake: Running `flutter run` and waiting indefinitely for output
+Lesson: Understand that the command opens an interactive session and continues running until explicitly terminated
