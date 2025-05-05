@@ -4,30 +4,14 @@ class User extends Equatable {
   final String id;
   final String email;
   final DateTime? emailVerifiedAt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
-  User({
+  const User({
     required this.id,
     required this.email,
     this.emailVerifiedAt,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
-
-  factory User.create({
-    required String id,
-    required String email,
-    DateTime? emailVerifiedAt,
-    DateTime? createdAt,
-  }) {
-    return User(
-      id: id,
-      email: email,
-      emailVerifiedAt: emailVerifiedAt,
-      createdAt: createdAt,
-    );
-  }
-
-  bool get isEmailVerified => emailVerifiedAt != null;
+    this.createdAt,
+  });
 
   User copyWith({
     String? id,
@@ -42,6 +26,8 @@ class User extends Equatable {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  bool get isEmailVerified => emailVerifiedAt != null;
 
   @override
   List<Object?> get props => [id, email, emailVerifiedAt, createdAt];

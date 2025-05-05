@@ -7,6 +7,7 @@
       - state_management.md for state changes
       - testing_strategy.md for tests
       - new_feature_implementation.md for features
+      - models.md for model design and conventions
    ```
 
 2. **File Structure**
@@ -150,6 +151,7 @@
       - Misplaced files
       - Incorrect naming
       - Missing test files
+      - Logic in models (use repositories/blocs)
    ```
 
 ## Implementation Checklist
@@ -162,6 +164,7 @@ VERIFY before completion:
 [ ] Naming follows conventions
 [ ] Documentation exists
 [ ] No prevented patterns used
+[ ] Models are pure data classes
 ```
 
 ## Key challenges and lessons learned during implementation:
