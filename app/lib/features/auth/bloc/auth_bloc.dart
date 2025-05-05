@@ -22,9 +22,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     // Listen to auth state changes from repository
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) {
-        if (user != null) {
-          add(AuthCheckRequested());
-        }
+        // Always check auth state on any change, including null (signed out)
+        add(AuthCheckRequested());
       },
     );
   }
@@ -108,8 +107,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   @override
-  Future<void> close() {
-    _authStateSubscription.cancel();
+  Future<void> close() async {
+    await _authStateSubscription.cancel();
     return super.close();
   }
 }

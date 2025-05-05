@@ -1,158 +1,280 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bloc_test/bloc_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:meditation_companion/features/auth/models/user_model.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_state.dart';
-import 'package:meditation_companion/features/auth/models/user_model.dart';
-import 'package:meditation_companion/features/auth/repository/mock_auth_repository.dart';
+import 'package:meditation_companion/features/auth/repository/auth_repository.dart';
+import 'package:meditation_companion/features/auth/exceptions/auth_exception.dart';
+
+class MockAuthRepository extends Mock implements AuthRepository {}
 
 void main() {
+  setUpAll(() {
+    // Register fallback values for mocktail
+    registerFallbackValue('test@example.com');
+    registerFallbackValue('password');
+  });
+
   group('AuthBloc', () {
     late MockAuthRepository authRepository;
-    late AuthBloc authBloc;
+    late AuthBloc bloc;
+    late StreamController<User?> authStateController;
 
     setUp(() {
       authRepository = MockAuthRepository();
-      authBloc = AuthBloc(authRepository: authRepository);
+      authStateController = StreamController<User?>.broadcast();
+
+      // Setup mock repository
+      when(() => authRepository.authStateChanges)
+          .thenAnswer((_) => authStateController.stream);
+      when(() => authRepository.currentUser).thenReturn(null);
+
+      bloc = AuthBloc(authRepository: authRepository);
     });
 
-    tearDown(() {
-      authBloc.close();
+    tearDown(() async {
+      await authStateController.close();
+      await bloc.close();
     });
 
     test('initial state is AuthInitial', () {
-      expect(authBloc.state, isA<AuthInitial>());
+      expect(bloc.state, isA<AuthInitial>());
     });
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, Authenticated] when SignInRequested is successful',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100), // Wait for mock delay
-      act: (bloc) => bloc.add(
-        const SignInRequested(
-          email: 'test@example.com',
-          password: 'password123',
-        ),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<Authenticated>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as Authenticated;
-        expect(state.user.email, equals('test@example.com'));
-      },
-    );
+    test('emits [Authenticated] when checking auth status with logged in user',
+        () {
+      // Arrange
+      final user = User(id: '1', email: 'test@example.com');
+      when(() => authRepository.currentUser).thenReturn(user);
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when SignInRequested fails with invalid credentials',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(
-        const SignInRequested(
-          email: 'test@example.com',
-          password: 'wrongpassword',
-        ),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<AuthError>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as AuthError;
-        expect(state.code, equals('invalid-credentials'));
-      },
-    );
+      // Act & Assert
+      bloc.add(AuthCheckRequested());
+      expect(
+        bloc.stream,
+        emits(isA<Authenticated>()
+            .having((s) => s.user.id, 'user.id', user.id)
+            .having((s) => s.user.email, 'user.email', user.email)),
+      );
+    });
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, Authenticated] when SignUpRequested is successful',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(
-        const SignUpRequested(
-          email: 'new@example.com',
-          password: 'password123',
-        ),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<Authenticated>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as Authenticated;
-        expect(state.user.email, equals('new@example.com'));
-      },
-    );
+    test('emits [Unauthenticated] when checking auth status with no user', () {
+      // Arrange
+      when(() => authRepository.currentUser).thenReturn(null);
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when SignUpRequested fails with existing email',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(
-        const SignUpRequested(
-          email: 'test@example.com',
-          password: 'password123',
-        ),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<AuthError>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as AuthError;
-        expect(state.code, equals('email-already-in-use'));
-      },
-    );
+      // Act & Assert
+      bloc.add(AuthCheckRequested());
+      expect(bloc.stream, emits(isA<Unauthenticated>()));
+    });
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, Unauthenticated] when SignOutRequested is successful',
-      build: () => authBloc,
-      seed: () => Authenticated(
-        User(
-          id: 'test-id',
-          email: 'test@example.com',
-        ),
-      ),
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(SignOutRequested()),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<Unauthenticated>(),
-      ],
-    );
+    test(
+        'emits [AuthLoading, Authenticated] when SignInRequested is successful',
+        () async {
+      // Arrange
+      const email = 'test@example.com';
+      const password = 'password';
+      final user = User(id: '1', email: email);
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, PasswordResetEmailSent] when PasswordResetRequested is successful',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(
-        const PasswordResetRequested(email: 'test@example.com'),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<PasswordResetEmailSent>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as PasswordResetEmailSent;
-        expect(state.email, equals('test@example.com'));
-      },
-    );
+      when(() => authRepository.signInWithEmailAndPassword(
+            email: email,
+            password: password,
+          )).thenAnswer((_) async => user);
 
-    blocTest<AuthBloc, AuthState>(
-      'emits [AuthLoading, AuthError] when PasswordResetRequested fails with non-existent email',
-      build: () => authBloc,
-      wait: const Duration(milliseconds: 1100),
-      act: (bloc) => bloc.add(
-        const PasswordResetRequested(email: 'nonexistent@example.com'),
-      ),
-      expect: () => [
-        isA<AuthLoading>(),
-        isA<AuthError>(),
-      ],
-      verify: (bloc) {
-        final state = bloc.state as AuthError;
-        expect(state.code, equals('user-not-found'));
-      },
-    );
+      // Act & Assert
+      bloc.add(SignInRequested(email: email, password: password));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<Authenticated>()
+              .having((s) => s.user.id, 'user.id', user.id)
+              .having((s) => s.user.email, 'user.email', user.email),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, AuthError] when SignInRequested fails with invalid credentials',
+        () async {
+      // Arrange
+      const email = 'test@example.com';
+      const password = 'wrong_password';
+      final error = AuthException(message: 'Invalid credentials');
+
+      when(() => authRepository.signInWithEmailAndPassword(
+            email: email,
+            password: password,
+          )).thenThrow(error);
+
+      // Act & Assert
+      bloc.add(SignInRequested(email: email, password: password));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<AuthError>().having((s) => s.message, 'message', error.message),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, Authenticated] when SignUpRequested is successful',
+        () async {
+      // Arrange
+      const email = 'new@example.com';
+      const password = 'password';
+      final user = User(id: '1', email: email);
+
+      when(() => authRepository.signUpWithEmailAndPassword(
+            email: email,
+            password: password,
+          )).thenAnswer((_) async => user);
+
+      // Act & Assert
+      bloc.add(SignUpRequested(email: email, password: password));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<Authenticated>()
+              .having((s) => s.user.id, 'user.id', user.id)
+              .having((s) => s.user.email, 'user.email', user.email),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, AuthError] when SignUpRequested fails with existing email',
+        () async {
+      // Arrange
+      const email = 'existing@example.com';
+      const password = 'password';
+      final error = AuthException(message: 'Email already exists');
+
+      when(() => authRepository.signUpWithEmailAndPassword(
+            email: email,
+            password: password,
+          )).thenThrow(error);
+
+      // Act & Assert
+      bloc.add(SignUpRequested(email: email, password: password));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<AuthError>().having((s) => s.message, 'message', error.message),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, Unauthenticated] when SignOutRequested is successful',
+        () async {
+      // Arrange
+      when(() => authRepository.signOut()).thenAnswer((_) async => {});
+
+      // Act & Assert
+      bloc.add(SignOutRequested());
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<Unauthenticated>(),
+        ]),
+      );
+    });
+
+    test('emits [AuthLoading, AuthError] when SignOutRequested fails',
+        () async {
+      // Arrange
+      final error = AuthException(message: 'Failed to sign out');
+      when(() => authRepository.signOut()).thenThrow(error);
+
+      // Act & Assert
+      bloc.add(SignOutRequested());
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<AuthError>().having((s) => s.message, 'message', error.message),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, PasswordResetEmailSent] when PasswordResetRequested is successful',
+        () async {
+      // Arrange
+      const email = 'test@example.com';
+      when(() => authRepository.sendPasswordResetEmail(email))
+          .thenAnswer((_) async => {});
+
+      // Act & Assert
+      bloc.add(PasswordResetRequested(email: email));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<PasswordResetEmailSent>().having((s) => s.email, 'email', email),
+        ]),
+      );
+    });
+
+    test(
+        'emits [AuthLoading, AuthError] when PasswordResetRequested fails with non-existent email',
+        () async {
+      // Arrange
+      const email = 'nonexistent@example.com';
+      final error = AuthException(message: 'User not found');
+
+      when(() => authRepository.sendPasswordResetEmail(email)).thenThrow(error);
+
+      // Act & Assert
+      bloc.add(PasswordResetRequested(email: email));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<AuthError>().having((s) => s.message, 'message', error.message),
+        ]),
+      );
+    });
+
+    group('auth state changes', () {
+      test('emits Authenticated when auth provider reports signed in user',
+          () async {
+        // Arrange
+        final user = User(id: '1', email: 'test@example.com');
+        when(() => authRepository.currentUser).thenReturn(user);
+
+        // Act
+        authStateController.add(user);
+
+        // Assert
+        await expectLater(
+          bloc.stream,
+          emits(isA<Authenticated>()
+              .having((s) => s.user.id, 'user.id', user.id)
+              .having((s) => s.user.email, 'user.email', user.email)),
+        );
+      });
+
+      test('emits Unauthenticated when auth provider reports signed out',
+          () async {
+        // Arrange
+        when(() => authRepository.currentUser).thenReturn(null);
+
+        // Act
+        authStateController.add(null);
+
+        // Assert
+        await expectLater(
+          bloc.stream,
+          emits(isA<Unauthenticated>()),
+        );
+      });
+    });
   });
 }
