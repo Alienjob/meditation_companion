@@ -1,28 +1,23 @@
 name: meditation_companion
-description: "An interactive meditation app that transforms your meditation practice through personalized real-time guidance and adaptive feedback."
+description: "A new Flutter project"
 publish_to: 'none'
-
-version: 1.0.0+1
+version: 0.1.0
 
 environment:
-  sdk: ^3.6.1
+  sdk: '>=3.2.6 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
-  flutter_bloc: ^8.1.0
+  flutter_bloc: ^8.1.3
   equatable: ^2.0.5
-  supabase_flutter: ^2.3.4
-  flutter_secure_storage: ^9.0.0
+  supabase_flutter: ^2.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  mockito: ^5.4.4
-  test: ^1.24.9
-  flutter_lints: ^5.0.0
-  bloc_test: ^9.1.0
+  flutter_lints: ^3.0.1
+  mocktail: ^1.0.3
 
 flutter:
   uses-material-design: true
