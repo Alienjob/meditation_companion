@@ -2,34 +2,40 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "meditation_companion (Chrome)",
+            "name": "meditation_companion (chrome)",
+            "cwd": "app",
             "request": "launch",
             "type": "dart",
-            "program": "app/lib/main.dart",
             "args": [
+                "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
+                "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
                 "-d",
-                "chrome"
-            ]
+                "chrome",
+            ],
+        }
+    ],
+    "inputs": [
+        {
+            "id": "supabaseUrl",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/secrets/secrets.json",
+                "json": "content.supabaseUrl",
+                "default": "",
+                "keyRemember": "SupabaseUrl"
+            }
         },
         {
-            "name": "meditation_companion",
-            "request": "launch",
-            "type": "dart",
-            "program": "app/lib/main.dart"
-        },
-        {
-            "name": "meditation_companion (profile mode)",
-            "request": "launch",
-            "type": "dart",
-            "program": "app/lib/main.dart",
-            "flutterMode": "profile"
-        },
-        {
-            "name": "meditation_companion (release mode)",
-            "request": "launch",
-            "type": "dart",
-            "program": "app/lib/main.dart",
-            "flutterMode": "release"
+            "id": "supabaseAnonKey",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/secrets/secrets.json",
+                "json": "content.supabaseAnonKey",
+                "default": "",
+                "keyRemember": "SupabaseAnonKey"
+            }
         }
     ]
 }
