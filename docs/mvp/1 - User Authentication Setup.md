@@ -1,7 +1,7 @@
 # User Authentication Setup Implementation Plan
 
 ## Overview
-This document outlines the implementation plan for user authentication in the Meditation Companion app using Supabase as the backend authentication provider.
+This document outlines the iterative implementation plan for user authentication in the Meditation Companion app. The implementation follows a mock-first approach to enable early testing and development, followed by UI implementation and final integration with Supabase as the backend authentication provider.
 
 ## Tech Stack
 - Flutter for cross-platform development
@@ -10,116 +10,115 @@ This document outlines the implementation plan for user authentication in the Me
 
 ## Implementation Steps
 
-### 1. Project Setup
+### 1. Mock Repository Implementation
 
-#### A. Supabase Project Configuration
-1. Create new Supabase project
-2. Configure authentication settings in Supabase dashboard
-3. Enable email/password and magic link authentication methods
-4. Set up email templates for:
-   - Email verification
-   - Password reset
-   - Magic link login
-
-#### B. Flutter Project Configuration
-
-1. Add Supabase dependencies to pubspec.yaml:
-```yaml
-dependencies:
-  supabase_flutter: ^2.0.0
-  flutter_bloc: ^8.1.0
-  equatable: ^2.0.5
-  flutter_secure_storage: ^8.0.0  # For secure token storage
-```
-
-2. Configure platform-specific settings:
-
-Android (android/app/src/main/AndroidManifest.xml):
-```xml
-<manifest ...>
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Add deep link configuration here -->
-</manifest>
-```
-
-iOS (ios/Runner/Info.plist):
-```xml
-<!-- Add deep link configuration here -->
-```
-
-### 2. Implementation Structure
-
-#### A. Auth Service
-Create a service to handle authentication operations:
+#### A. Auth Repository Interface
+Create the base interface that both mock and real implementations will follow:
 
 ```dart
-// lib/services/auth_service.dart
-class AuthService {
-  final SupabaseClient _supabase;
-  
-  AuthService(this._supabase);
-  
-  // Sign up with email and password
-  Future<AuthResponse> signUp({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      final response = await _supabase.auth.signUp(
-        email: email,
-        password: password,
-      );
-      return response;
-    } catch (error) {
-      throw AuthException(message: error.toString());
-    }
-  }
-  
-  // Sign in with email and password
-  Future<AuthResponse> signIn({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      final response = await _supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-      return response;
-    } catch (error) {
-      throw AuthException(message: error.toString());
-    }
-  }
-  
-  // Password reset
-  Future<void> resetPassword(String email) async {
-    try {
-      await _supabase.auth.resetPasswordForEmail(email);
-    } catch (error) {
-      throw AuthException(message: error.toString());
-    }
-  }
-  
-  // Sign out
-  Future<void> signOut() async {
-    try {
-      await _supabase.auth.signOut();
-    } catch (error) {
-      throw AuthException(message: error.toString());
-    }
-  }
-  
-  // Get current user
-  User? get currentUser => _supabase.auth.currentUser;
-  
-  // Stream of auth changes
-  Stream<AuthState> get authStateChanges => 
-      _supabase.auth.onAuthStateChange;
+// lib/repositories/auth_repository.dart
+abstract class AuthRepository {
+  Future<User> signIn(String email, String password);
+  Future<User> signUp(String email, String password);
+  Future<void> signOut();
+  Future<void> resetPassword(String email);
+  Stream<AuthState> get authStateChanges;
+  User? get currentUser;
 }
 ```
 
-#### B. Auth BLoC Implementation
-For detailed BLoC pattern implementation, refer to [State Management Conventions](../code_conventions/state_management.md).
+#### B. Mock Repository Implementation
+```dart
+// lib/repositories/mock_auth_repository.dart
+class MockAuthRepository implements AuthRepository {
+  User? _currentUser;
+  final _authStateController = StreamController<AuthState>.broadcast();
+  
+  // Simulated user database
+  final Map<String, String> _users = {
+    'test@example.com': 'password123'
+  };
+
+  @override
+  Future<User> signIn(String email, String password) async {
+    await Future.delayed(Duration(seconds: 1)); // Simulate network delay
+    if (_users[email] == password) {
+      _currentUser = User(email: email, id: '123');
+      _authStateController.add(AuthState.authenticated(_currentUser!));
+      return _currentUser!;
+    }
+    throw AuthException('Invalid credentials');
+  }
+
+  @override
+  Future<User> signUp(String email, String password) async {
+    await Future.delayed(Duration(seconds: 1));
+    if (_users.containsKey(email)) {
+      throw AuthException('Email already registered');
+    }
+    _users[email] = password;
+    _currentUser = User(email: email, id: DateTime.now().toString());
+    _authStateController.add(AuthState.authenticated(_currentUser!));
+    return _currentUser!;
+  }
+
+  @override
+  Future<void> signOut() async {
+    await Future.delayed(Duration(milliseconds: 500));
+    _currentUser = null;
+    _authStateController.add(AuthState.unauthenticated());
+  }
+
+  @override
+  Future<void> resetPassword(String email) async {
+    await Future.delayed(Duration(seconds: 1));
+    if (!_users.containsKey(email)) {
+      throw AuthException('Email not found');
+    }
+    // Simulate password reset email
+    print('Password reset email sent to $email');
+  }
+
+  @override
+  Stream<AuthState> get authStateChanges => _authStateController.stream;
+
+  @override
+  User? get currentUser => _currentUser;
+}
+```
+
+#### C. Mock Implementation Tests
+```dart
+// test/repositories/mock_auth_repository_test.dart
+void main() {
+  group('MockAuthRepository', () {
+    late MockAuthRepository repository;
+
+    setUp(() {
+      repository = MockAuthRepository();
+    });
+
+    test('signIn with valid credentials succeeds', () async {
+      final user = await repository.signIn('test@example.com', 'password123');
+      expect(user.email, equals('test@example.com'));
+      expect(repository.currentUser, isNotNull);
+    });
+
+    test('signIn with invalid credentials throws', () {
+      expect(
+        () => repository.signIn('test@example.com', 'wrongpassword'),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
+    // Add more tests...
+  });
+}
+```
+
+### 2. UI Implementation
+
+#### A. Auth BLoC Implementation
 
 1. Auth Events:
 ```dart
@@ -185,69 +184,28 @@ class AuthFailure extends AuthState {
 ```dart
 // lib/blocs/auth/auth_bloc.dart
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  final AuthService _authService;
+  final AuthRepository _authRepository;
 
-  AuthBloc({required AuthService authService})
-      : _authService = authService,
+  AuthBloc({required AuthRepository authRepository})
+      : _authRepository = authRepository,
         super(AuthInitial()) {
     on<AuthCheckRequested>(_onAuthCheckRequested);
     on<SignInRequested>(_onSignInRequested);
     on<SignOutRequested>(_onSignOutRequested);
     
     // Listen to auth state changes
-    _authService.authStateChanges.listen((auth) {
-      if (auth.session?.user != null) {
-        add(AuthCheckRequested());
-      }
+    _authRepository.authStateChanges.listen((auth) {
+      add(AuthCheckRequested());
     });
   }
 
-  Future<void> _onAuthCheckRequested(
-    AuthCheckRequested event,
-    Emitter<AuthState> emit,
-  ) async {
-    final user = _authService.currentUser;
-    if (user != null) {
-      emit(Authenticated(user));
-    } else {
-      emit(Unauthenticated());
-    }
-  }
-
-  Future<void> _onSignInRequested(
-    SignInRequested event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(AuthInProgress());
-    try {
-      final response = await _authService.signIn(
-        email: event.email,
-        password: event.password,
-      );
-      emit(Authenticated(response.user!));
-    } catch (e) {
-      emit(AuthFailure(e.toString()));
-    }
-  }
-
-  Future<void> _onSignOutRequested(
-    SignOutRequested event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(AuthInProgress());
-    try {
-      await _authService.signOut();
-      emit(Unauthenticated());
-    } catch (e) {
-      emit(AuthFailure(e.toString()));
-    }
-  }
+  // Implementation of event handlers...
 }
 ```
 
-### 3. UI Implementation
+#### B. Auth UI Implementation
 
-#### A. Login Screen with BLoC
+1. Login Screen:
 ```dart
 // lib/screens/login_screen.dart
 class LoginScreen extends StatelessWidget {
@@ -322,92 +280,73 @@ class LoginScreen extends StatelessWidget {
 }
 ```
 
-### 4. Application Setup
+### 3. Supabase Integration
 
+#### A. Project Setup
+1. Create new Supabase project
+2. Configure authentication settings in Supabase dashboard
+3. Enable email/password and magic link authentication methods
+4. Set up email templates for:
+   - Email verification
+   - Password reset
+   - Magic link login
+
+#### B. Flutter Project Configuration
+
+1. Add Supabase dependencies to pubspec.yaml:
+```yaml
+dependencies:
+  supabase_flutter: ^2.0.0
+  flutter_bloc: ^8.1.0
+  equatable: ^2.0.5
+  flutter_secure_storage: ^8.0.0  # For secure token storage
+```
+
+2. Configure platform-specific settings:
+
+Android (android/app/src/main/AndroidManifest.xml):
+```xml
+<manifest ...>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Add deep link configuration here -->
+</manifest>
+```
+
+iOS (ios/Runner/Info.plist):
+```xml
+<!-- Add deep link configuration here -->
+```
+
+#### C. Supabase Repository Implementation
 ```dart
-// lib/main.dart
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+// lib/repositories/supabase_auth_repository.dart
+class SupabaseAuthRepository implements AuthRepository {
+  final SupabaseClient _supabase;
   
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: SUPABASE_URL,
-    anonKey: SUPABASE_ANON_KEY,
-  );
-
-  // Set up BLoC observer for debugging
-  Bloc.observer = AppBlocObserver();
+  SupabaseAuthRepository(this._supabase);
   
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   @override
-  Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(
-          create: (context) => AuthBloc(
-            authService: AuthService(
-              Supabase.instance.client,
-            ),
-          )..add(AuthCheckRequested()),
-        ),
-        // Add other BLoCs here
-      ],
-      child: MaterialApp(
-        title: 'Meditation Companion',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
-        home: const AuthWrapper(),
-      ),
-    );
+  Future<User> signIn(String email, String password) async {
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      return response.user!;
+    } catch (error) {
+      throw AuthException(message: error.toString());
+    }
   }
-}
-
-// BLoC observer for debugging
-class AppBlocObserver extends BlocObserver {
-  @override
-  void onChange(BlocBase bloc, Change change) {
-    super.onChange(bloc, change);
-    debugPrint('${bloc.runtimeType} $change');
-  }
-
-  @override
-  void onError(BlocBase bloc, Object error, StackTrace stackTrace) {
-    debugPrint('${bloc.runtimeType} $error $stackTrace');
-    super.onError(bloc, error, stackTrace);
-  }
-}
-
-// Wrapper widget to handle auth state
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        if (state is AuthInProgress) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (state is Authenticated) {
-          return const HomeScreen();
-        }
-        return const LoginScreen();
-      },
-    );
-  }
+  
+  // Implement other methods...
 }
 ```
 
-### 5. Error Handling and Security
+### 4. Error Handling and Testing
 
-#### A. Custom Exceptions
+#### A. Error Handling Implementation
+
+1. Custom Exceptions:
 ```dart
 // lib/exceptions/auth_exception.dart
 class AuthException implements Exception {
@@ -420,103 +359,88 @@ class AuthException implements Exception {
 }
 ```
 
-#### B. Secure Token Storage
-Configure secure storage for auth tokens:
+2. Error Cases to Handle:
+- Network connectivity issues
+- Invalid credentials
+- Account already exists
+- Password requirements not met
+- Rate limiting
+- Session expiration
+- Token refresh failures
 
-```dart
-// lib/services/secure_storage.dart
-class SecureStorage {
-  final FlutterSecureStorage _storage;
-  
-  SecureStorage(this._storage);
-  
-  Future<void> saveToken(String token) async {
-    await _storage.write(key: 'auth_token', value: token);
-  }
-  
-  Future<String?> getToken() async {
-    return await _storage.read(key: 'auth_token');
-  }
-  
-  Future<void> deleteToken() async {
-    await _storage.delete(key: 'auth_token');
-  }
-}
-```
-
-### 5. Security Best Practices
-
-1. Token Management:
-   - Store tokens securely using FlutterSecureStorage
-   - Implement token refresh mechanism
-   - Clear tokens on logout
-
-2. Password Security:
-   - Enforce strong password requirements
-   - Implement rate limiting for login attempts
-   - Secure password reset flow
-
-3. Session Management:
-   - Implement session timeout
-   - Handle multiple device sessions
-   - Secure session persistence
-
-### 6. Testing Plan
+#### B. Testing Plan
 
 1. Unit Tests:
-   - Auth service methods
-   - Token management
-   - Error handling
+- Mock repository tests
+- Auth BLoC tests
+- Error handling tests
+- Token management tests
 
-2. Integration Tests:
-   - Login flow
-   - Registration flow
-   - Password reset flow
+2. Widget Tests:
+- Login form validation
+- Error message display
+- Loading states
+- Navigation flows
 
-3. Security Tests:
-   - Token storage security
-   - Session management
-   - API endpoint security
+3. Integration Tests:
+- Complete auth flows
+- API communication
+- Error scenarios
+- Session management
 
-### 7. Monitoring and Analytics
-
-1. Implement authentication analytics:
-   - Login success/failure rates
-   - Registration completion rates
-   - Password reset usage
-
-2. Error tracking:
-   - Authentication failures
-   - API errors
-   - Session issues
+4. Security Tests:
+- Token storage security
+- Session management
+- API endpoint security
+- Input validation
 
 ## Implementation Timeline
 
 1. Week 1:
-   - Project setup
-   - Basic auth service implementation
-   - UI implementation
+   - Mock repository implementation
+   - Basic UI implementation
+   - Initial testing with mock data
 
 2. Week 2:
-   - Error handling
-   - Security implementations
-   - Testing and bug fixes
+   - Supabase integration
+   - Error handling implementation
+   - Integration testing
+
+3. Week 3:
+   - Edge case handling
+   - Security improvements
+   - Performance optimization
 
 ## Success Criteria
 
-1. Users can successfully:
-   - Register new accounts
-   - Login with email/password
-   - Reset passwords
-   - Maintain authenticated sessions
+1. Functionality:
+   - Users can register, login, and reset passwords
+   - Authentication state persists across app restarts
+   - All error cases are handled gracefully
 
-2. Security requirements met:
-   - Secure token storage
-   - Protected API endpoints
-   - Rate limiting implemented
-   - Session management working
+2. Testing:
+   - All unit tests pass
+   - Integration tests cover main flows
+   - Security tests validate token handling
 
-3. Performance metrics:
+3. Performance:
    - Auth operations complete in < 2 seconds
-   - 99.9% uptime for auth services
-   - < 0.1% error rate for auth operations
+   - Smooth transitions between auth states
+   - Proper error feedback to users
+
+## Migration Strategy
+
+1. Development Phase:
+   - Use MockAuthRepository for initial development
+   - Test all flows with mock data
+   - Validate UI/UX with stakeholders
+
+2. Integration Phase:
+   - Switch to SupabaseAuthRepository
+   - Verify all flows with actual backend
+   - Monitor for any integration issues
+
+3. Production Phase:
+   - Deploy with proper error monitoring
+   - Collect analytics on auth operations
+   - Monitor for security incidents
