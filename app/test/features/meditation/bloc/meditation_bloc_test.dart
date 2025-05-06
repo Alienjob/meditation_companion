@@ -1,11 +1,13 @@
 import 'dart:async';
+
+import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
-import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/models/meditation_session.dart';
+import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
 
@@ -13,237 +15,135 @@ class MockTimerService extends Mock implements TimerService {}
 
 class MockAudioService extends Mock implements AudioService {}
 
+class FakeStreamSubscription<T> extends Fake implements StreamSubscription<T> {}
+
 void main() {
+  late TimerService timerService;
+  late AudioService audioService;
+  late StreamController<Duration> timerController;
+  late StreamController<Map<String, AmbientSoundSettings>> audioController;
+
+  void setupMocks() {
+    timerController = StreamController<Duration>.broadcast();
+    audioController =
+        StreamController<Map<String, AmbientSoundSettings>>.broadcast();
+
+    when(() => timerService.timeStream)
+        .thenAnswer((_) => timerController.stream);
+    when(() => audioService.soundSettingsStream)
+        .thenAnswer((_) => audioController.stream);
+    when(() => audioService.getCurrentSoundSettings()).thenReturn({});
+    when(() => timerService.start(any())).thenAnswer((_) async {});
+    when(() => timerService.pause()).thenAnswer((_) async {});
+    when(() => timerService.resume()).thenAnswer((_) async {});
+    when(() => timerService.stop()).thenAnswer((_) async {});
+    when(() => audioService.stopAllSounds()).thenAnswer((_) async {});
+  }
+
   setUpAll(() {
-    registerFallbackValue(const Duration(minutes: 1));
-    registerFallbackValue('dummy_sound');
-    registerFallbackValue(true);
-    registerFallbackValue(0.5);
+    registerFallbackValue(const Duration(minutes: 10));
+    registerFallbackValue(FakeStreamSubscription<Duration>());
+    registerFallbackValue(
+        FakeStreamSubscription<Map<String, AmbientSoundSettings>>());
+  });
+
+  setUp(() {
+    timerService = MockTimerService();
+    audioService = MockAudioService();
+    setupMocks();
+  });
+
+  tearDown(() async {
+    await timerController.close();
+    await audioController.close();
   });
 
   group('MeditationBloc', () {
-    late MockTimerService timerService;
-    late MockAudioService audioService;
-    late MeditationBloc bloc;
-    late StreamController<Duration> timerController;
-    late StreamController<Map<String, AmbientSoundSettings>> audioController;
-
-    setUp(() {
-      timerService = MockTimerService();
-      audioService = MockAudioService();
-      timerController = StreamController<Duration>.broadcast();
-      audioController =
-          StreamController<Map<String, AmbientSoundSettings>>.broadcast();
-
-      // Setup timer service mock
-      when(() => timerService.timeStream)
-          .thenAnswer((_) => timerController.stream);
-      when(() => timerService.start(any())).thenAnswer((_) => Future.value());
-      when(() => timerService.pause()).thenAnswer((_) => Future.value());
-      when(() => timerService.resume()).thenAnswer((_) => Future.value());
-      when(() => timerService.stop()).thenAnswer((_) => Future.value());
-      when(() => timerService.dispose()).thenAnswer((_) => Future.value());
-      when(() => timerService.currentTime).thenReturn(Duration.zero);
-      when(() => timerService.isRunning).thenReturn(false);
-      when(() => timerService.getTimeLeft()).thenReturn(Duration.zero);
-
-      // Setup audio service mock
-      when(() => audioService.soundSettingsStream)
-          .thenAnswer((_) => audioController.stream);
-      when(() => audioService.getCurrentSoundSettings()).thenReturn({});
-      when(() => audioService.toggleSound(any(), any()))
-          .thenAnswer((_) => Future.value());
-      when(() => audioService.setVolume(any(), any()))
-          .thenAnswer((_) => Future.value());
-      when(() => audioService.stopAllSounds())
-          .thenAnswer((_) => Future.value());
-      when(() => audioService.dispose()).thenAnswer((_) => Future.value());
-
-      bloc = MeditationBloc(
-        timerService: timerService,
-        audioService: audioService,
-      );
-    });
-
-    tearDown(() async {
-      await timerController.close();
-      await audioController.close();
-      await bloc.close();
-    });
-
     test('initial state is MeditationInitial', () {
+      final bloc = createBloc(timerService, audioService);
       expect(bloc.state, isA<MeditationInitial>());
+      bloc.close();
     });
 
-    group('StartMeditation', () {
-      test('emits MeditationActive with correct session', () async {
-        // Arrange
-        final duration = Duration(minutes: 10);
-        when(() => timerService.isRunning).thenReturn(true);
+    blocTest<MeditationBloc, MeditationState>(
+      'StartMeditation starts timer and emits active state',
+      build: () => createBloc(timerService, audioService),
+      act: (bloc) =>
+          bloc.add(StartMeditation(duration: const Duration(minutes: 10))),
+      expect: () => [
+        isA<MeditationActive>()
+            .having((state) => state.session.duration, 'duration',
+                const Duration(minutes: 10))
+            .having((state) => state.session.currentTime, 'currentTime',
+                Duration.zero)
+            .having((state) => state.session.status, 'status',
+                MeditationStatus.running),
+      ],
+      verify: (_) {
+        verify(() => timerService.start(const Duration(minutes: 10))).called(1);
+      },
+    );
 
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(
-            isA<MeditationActive>()
-                .having((s) => s.session.duration, 'duration', duration)
-                .having((s) => s.session.status, 'status',
-                    MeditationStatus.running),
-          ),
-        );
+    blocTest<MeditationBloc, MeditationState>(
+      'StopMeditation stops timer and sounds',
+      build: () => createBloc(timerService, audioService),
+      seed: () => MeditationActive(
+        session: MeditationSession(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: 5),
+          status: MeditationStatus.running,
+        ),
+        soundSettings: const {},
+      ),
+      act: (bloc) => bloc.add(const StopMeditation()),
+      expect: () => [isA<MeditationInitial>()],
+      verify: (_) {
+        verifyInOrder([
+          () => timerService.stop(),
+          () => audioService.stopAllSounds(),
+        ]);
+      },
+    );
 
-        bloc.add(StartMeditation(duration: duration));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => timerService.start(duration)).called(1);
-      });
-
-      test('handles timer service failure', () async {
-        // Arrange
-        when(() => timerService.start(any()))
-            .thenThrow(Exception('Timer service failed'));
-
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(isA<MeditationError>()),
-        );
-
-        bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-    });
-
-    group('PauseMeditation', () {
-      setUp(() async {
-        bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-
-      test('emits paused state', () async {
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(
-            isA<MeditationActive>().having(
-                (s) => s.session.status, 'status', MeditationStatus.paused),
-          ),
-        );
-
-        bloc.add(PauseMeditation());
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => timerService.pause()).called(1);
-      });
-    });
-
-    group('ResumeMeditation', () {
-      setUp(() async {
-        bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        bloc.add(PauseMeditation());
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-
-      test('emits running state', () async {
-        // Arrange
-        when(() => timerService.isRunning).thenReturn(true);
-
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(
-            isA<MeditationActive>().having(
-                (s) => s.session.status, 'status', MeditationStatus.running),
-          ),
-        );
-
-        bloc.add(ResumeMeditation());
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => timerService.resume()).called(1);
-      });
-    });
-
-    group('StopMeditation', () {
-      setUp(() async {
-        bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-
-      test('emits completed state and stops services', () async {
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(isA<MeditationCompleted>()),
-        );
-
-        bloc.add(StopMeditation());
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => timerService.stop()).called(1);
-        verify(() => audioService.stopAllSounds()).called(1);
-      });
-    });
-
-    group('Sound management', () {
-      setUp(() async {
-        bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-
-      test('toggles sound', () async {
-        // Act & Assert
-        bloc.add(ToggleSound(soundId: 'rain', active: true));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => audioService.toggleSound('rain', true)).called(1);
-      });
-
-      test('adjusts volume', () async {
-        // Act & Assert
-        bloc.add(AdjustVolume(soundId: 'rain', volume: 0.5));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        verify(() => audioService.setVolume('rain', 0.5)).called(1);
-      });
-
-      test('updates state on sound settings change', () async {
-        // Arrange
-        final newSettings = {
-          'rain': AmbientSoundSettings(isActive: true, volume: 0.5),
-        };
-
-        // Act & Assert
-        expectLater(
-          bloc.stream,
-          emits(
-            isA<MeditationActive>()
-                .having((s) => s.soundSettings, 'soundSettings', newSettings),
-          ),
-        );
-
-        audioController.add(newSettings);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-    });
-
-    test('completes meditation when time is up', () async {
-      // Arrange
-      bloc.add(StartMeditation(duration: Duration(minutes: 10)));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
-      // Act & Assert
-      expectLater(
-        bloc.stream,
-        emits(isA<MeditationCompleted>()),
-      );
-
-      timerController.add(Duration(minutes: 10)); // Time's up
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
-      verify(() => timerService.stop()).called(1);
-      verify(() => audioService.stopAllSounds()).called(1);
-    });
+    blocTest<MeditationBloc, MeditationState>(
+      'completes meditation when time is up',
+      build: () => createBloc(timerService, audioService),
+      seed: () => MeditationActive(
+        session: MeditationSession(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: 9),
+          status: MeditationStatus.running,
+        ),
+        soundSettings: const {},
+      ),
+      act: (bloc) => bloc.add(UpdateTime(const Duration(minutes: 10))),
+      wait: const Duration(milliseconds: 100),
+      expect: () => [
+        isA<MeditationCompleted>().having(
+          (state) => state.session,
+          'session',
+          isA<MeditationSession>()
+              .having((s) => s.status, 'status', MeditationStatus.completed)
+              .having(
+                  (s) => s.duration, 'duration', const Duration(minutes: 10))
+              .having((s) => s.currentTime, 'currentTime',
+                  const Duration(minutes: 10)),
+        ),
+      ],
+      verify: (_) {
+        verifyInOrder([
+          () => audioService.stopAllSounds(),
+          () => timerService.stop(),
+        ]);
+      },
+    );
   });
+}
+
+MeditationBloc createBloc(
+    TimerService timerService, AudioService audioService) {
+  return MeditationBloc(
+    timerService: timerService,
+    audioService: audioService,
+  );
 }

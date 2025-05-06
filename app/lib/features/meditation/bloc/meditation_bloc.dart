@@ -1,17 +1,18 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
 import 'package:meditation_companion/features/meditation/models/meditation_session.dart';
+import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
 
 class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
   final TimerService _timerService;
   final AudioService _audioService;
-
   StreamSubscription<Duration>? _timerSubscription;
-  StreamSubscription<Map<String, dynamic>>? _audioSubscription;
+  StreamSubscription<Map<String, AmbientSoundSettings>>? _audioSubscription;
 
   MeditationBloc({
     required TimerService timerService,
@@ -23,14 +24,13 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     on<PauseMeditation>(_onPauseMeditation);
     on<ResumeMeditation>(_onResumeMeditation);
     on<StopMeditation>(_onStopMeditation);
-    on<MeditationTimeUpdated>(_onMeditationTimeUpdated);
     on<ToggleSound>(_onToggleSound);
     on<AdjustVolume>(_onAdjustVolume);
-    on<SoundSettingsUpdated>(_onSoundSettingsUpdated);
+    on<UpdateTime>(_onUpdateTime);
+    on<UpdateSoundSettings>(_onUpdateSoundSettings);
 
-    // Listen to audio settings updates
     _audioSubscription = _audioService.soundSettingsStream.listen(
-      (settings) => add(SoundSettingsUpdated(settings: settings)),
+      (settings) => add(UpdateSoundSettings(settings)),
     );
   }
 
@@ -39,28 +39,15 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     Emitter<MeditationState> emit,
   ) async {
     try {
-      // Cancel any existing timer subscription
-      await _timerSubscription?.cancel();
-
-      // Create new session
-      final session = MeditationSession(
-        duration: event.duration,
-        status: MeditationStatus.running,
-      );
-
-      // Start timer and listen for updates
       await _timerService.start(event.duration);
-      _timerSubscription = _timerService.timeStream.listen(
-        (time) => add(MeditationTimeUpdated(currentTime: time)),
-      );
+      _subscribeToTimer();
 
-      // Emit initial active state with current sound settings
       emit(MeditationActive(
-        session: session,
+        session: MeditationSession.initial(duration: event.duration),
         soundSettings: _audioService.getCurrentSoundSettings(),
       ));
     } catch (e) {
-      emit(MeditationError(message: 'Failed to start meditation: $e'));
+      emit(MeditationError(message: e.toString()));
     }
   }
 
@@ -69,16 +56,17 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     Emitter<MeditationState> emit,
   ) async {
     if (state is MeditationActive) {
-      final currentState = state as MeditationActive;
       try {
         await _timerService.pause();
-        emit(currentState.copyWith(
+        final currentState = state as MeditationActive;
+        emit(MeditationActive(
           session: currentState.session.copyWith(
             status: MeditationStatus.paused,
           ),
+          soundSettings: currentState.soundSettings,
         ));
       } catch (e) {
-        emit(MeditationError(message: 'Failed to pause meditation: $e'));
+        emit(MeditationError(message: e.toString()));
       }
     }
   }
@@ -88,16 +76,17 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     Emitter<MeditationState> emit,
   ) async {
     if (state is MeditationActive) {
-      final currentState = state as MeditationActive;
       try {
         await _timerService.resume();
-        emit(currentState.copyWith(
+        final currentState = state as MeditationActive;
+        emit(MeditationActive(
           session: currentState.session.copyWith(
             status: MeditationStatus.running,
           ),
+          soundSettings: currentState.soundSettings,
         ));
       } catch (e) {
-        emit(MeditationError(message: 'Failed to resume meditation: $e'));
+        emit(MeditationError(message: e.toString()));
       }
     }
   }
@@ -106,36 +95,13 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     StopMeditation event,
     Emitter<MeditationState> emit,
   ) async {
-    if (state is MeditationActive) {
-      final currentState = state as MeditationActive;
-      try {
-        await Future.wait([
-          _timerService.stop(),
-          _audioService.stopAllSounds(),
-        ]);
-        emit(MeditationCompleted(session: currentState.session));
-      } catch (e) {
-        emit(MeditationError(message: 'Failed to stop meditation: $e'));
-      }
-    }
-  }
-
-  Future<void> _onMeditationTimeUpdated(
-    MeditationTimeUpdated event,
-    Emitter<MeditationState> emit,
-  ) async {
-    if (state is MeditationActive) {
-      final currentState = state as MeditationActive;
-      final updatedSession = currentState.session.copyWith(
-        currentTime: event.currentTime,
-      );
-
-      // Check if meditation is complete
-      if (updatedSession.currentTime >= updatedSession.duration) {
-        await _onStopMeditation(StopMeditation(), emit);
-      } else {
-        emit(currentState.copyWith(session: updatedSession));
-      }
+    try {
+      await _timerService.stop();
+      await _audioService.stopAllSounds();
+      _unsubscribeFromTimer();
+      emit(MeditationInitial());
+    } catch (e) {
+      emit(MeditationError(message: e.toString()));
     }
   }
 
@@ -146,7 +112,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     try {
       await _audioService.toggleSound(event.soundId, event.active);
     } catch (e) {
-      emit(MeditationError(message: 'Failed to toggle sound: $e'));
+      emit(MeditationError(message: e.toString()));
     }
   }
 
@@ -157,26 +123,71 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     try {
       await _audioService.setVolume(event.soundId, event.volume);
     } catch (e) {
-      emit(MeditationError(message: 'Failed to adjust volume: $e'));
+      emit(MeditationError(message: e.toString()));
     }
   }
 
-  void _onSoundSettingsUpdated(
-    SoundSettingsUpdated event,
+  Future<void> _onUpdateTime(
+    UpdateTime event,
+    Emitter<MeditationState> emit,
+  ) async {
+    dev.log('UpdateTime: ${event.time}');
+
+    if (state is! MeditationActive) return;
+
+    final currentState = state as MeditationActive;
+    final session = currentState.session;
+
+    if (event.time >= session.duration) {
+      dev.log('Time is up, completing meditation');
+      final completedSession = session.copyWith(
+        status: MeditationStatus.completed,
+        currentTime: session.duration,
+      );
+
+      await _audioService.stopAllSounds();
+      await _timerService.stop();
+      _unsubscribeFromTimer();
+
+      emit(MeditationCompleted(session: completedSession));
+      dev.log('Emitted completed state');
+    } else {
+      emit(MeditationActive(
+        session: session.copyWith(currentTime: event.time),
+        soundSettings: currentState.soundSettings,
+      ));
+    }
+  }
+
+  void _onUpdateSoundSettings(
+    UpdateSoundSettings event,
     Emitter<MeditationState> emit,
   ) {
     if (state is MeditationActive) {
-      final currentState = state as MeditationActive;
-      emit(currentState.copyWith(soundSettings: event.settings));
+      emit(MeditationActive(
+        session: (state as MeditationActive).session,
+        soundSettings: event.settings,
+      ));
     }
+  }
+
+  void _subscribeToTimer() {
+    _timerSubscription?.cancel();
+    _timerSubscription = _timerService.timeStream.listen(
+      (time) => add(UpdateTime(time)),
+    );
+  }
+
+  void _unsubscribeFromTimer() {
+    _timerSubscription?.cancel();
+    _timerSubscription = null;
   }
 
   @override
   Future<void> close() async {
     await _timerSubscription?.cancel();
     await _audioSubscription?.cancel();
-    await _timerService.dispose();
-    await _audioService.dispose();
+    await _audioService.stopAllSounds();
     return super.close();
   }
 }

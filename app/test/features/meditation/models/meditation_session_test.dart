@@ -1,95 +1,90 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/models/meditation_session.dart';
 
 void main() {
   group('MeditationSession', () {
-    test('should be created with default values except duration', () {
-      final session = MeditationSession(duration: Duration(minutes: 10));
-
-      expect(session.duration, Duration(minutes: 10));
+    test('creates initial session', () {
+      final session = MeditationSession.initial(
+        duration: const Duration(minutes: 10),
+      );
+      expect(session.duration, const Duration(minutes: 10));
       expect(session.currentTime, Duration.zero);
-      expect(session.status, MeditationStatus.paused);
-      expect(session.activeAmbientSounds, isEmpty);
-    });
-
-    test('should be created with custom values', () {
-      final sounds = {
-        'rain': AmbientSoundSettings(isActive: true, volume: 0.5),
-      };
-
-      final session = MeditationSession(
-        duration: Duration(minutes: 20),
-        currentTime: Duration(minutes: 5),
-        status: MeditationStatus.running,
-        activeAmbientSounds: sounds,
-      );
-
-      expect(session.duration, Duration(minutes: 20));
-      expect(session.currentTime, Duration(minutes: 5));
       expect(session.status, MeditationStatus.running);
-      expect(session.activeAmbientSounds, sounds);
     });
 
-    test('should assert duration is positive', () {
-      expect(
-        () => MeditationSession(duration: Duration.zero),
-        throwsA(isA<AssertionError>()),
-      );
-
-      expect(
-        () => MeditationSession(duration: Duration(minutes: -1)),
-        throwsA(isA<AssertionError>()),
-      );
-    });
-
-    test('should assert currentTime is not greater than duration', () {
+    test('validates positive duration', () {
       expect(
         () => MeditationSession(
-          duration: Duration(minutes: 5),
-          currentTime: Duration(minutes: 6),
+          duration: Duration.zero,
+          currentTime: Duration.zero,
+          status: MeditationStatus.running,
         ),
-        throwsA(isA<AssertionError>()),
+        throwsAssertionError,
+      );
+
+      expect(
+        () => MeditationSession(
+          duration: const Duration(minutes: -1),
+          currentTime: Duration.zero,
+          status: MeditationStatus.running,
+        ),
+        throwsAssertionError,
       );
     });
 
-    group('status helpers', () {
-      test('isRunning should return correct value', () {
-        final running = MeditationSession(
-          duration: Duration(minutes: 10),
+    test('validates current time range', () {
+      expect(
+        () => MeditationSession(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: -1),
           status: MeditationStatus.running,
+        ),
+        throwsAssertionError,
+      );
+
+      expect(
+        () => MeditationSession(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: 11),
+          status: MeditationStatus.running,
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    group('status checks', () {
+      test('isRunning returns correct value', () {
+        final running = MeditationSession.initial(
+          duration: const Duration(minutes: 10),
         );
-        final paused = MeditationSession(
-          duration: Duration(minutes: 10),
-          status: MeditationStatus.paused,
+        final paused = MeditationSession.paused(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: 5),
         );
 
         expect(running.isRunning, true);
         expect(paused.isRunning, false);
       });
 
-      test('isPaused should return correct value', () {
-        final paused = MeditationSession(
-          duration: Duration(minutes: 10),
-          status: MeditationStatus.paused,
+      test('isPaused returns correct value', () {
+        final paused = MeditationSession.paused(
+          duration: const Duration(minutes: 10),
+          currentTime: const Duration(minutes: 5),
         );
-        final running = MeditationSession(
-          duration: Duration(minutes: 10),
-          status: MeditationStatus.running,
+        final running = MeditationSession.initial(
+          duration: const Duration(minutes: 10),
         );
 
         expect(paused.isPaused, true);
         expect(running.isPaused, false);
       });
 
-      test('isCompleted should return correct value', () {
-        final completed = MeditationSession(
-          duration: Duration(minutes: 10),
-          status: MeditationStatus.completed,
+      test('isCompleted returns correct value', () {
+        final completed = MeditationSession.completed(
+          duration: const Duration(minutes: 10),
         );
-        final running = MeditationSession(
-          duration: Duration(minutes: 10),
-          status: MeditationStatus.running,
+        final running = MeditationSession.initial(
+          duration: const Duration(minutes: 10),
         );
 
         expect(completed.isCompleted, true);
@@ -97,102 +92,62 @@ void main() {
       });
     });
 
-    test('remainingTime should be calculated correctly', () {
+    test('calculates remaining time correctly', () {
       final session = MeditationSession(
-        duration: Duration(minutes: 10),
-        currentTime: Duration(minutes: 3),
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 3),
+        status: MeditationStatus.running,
       );
-
-      expect(session.remainingTime, Duration(minutes: 7));
+      expect(session.remainingTime, const Duration(minutes: 7));
     });
 
-    test('progress should be calculated correctly', () {
+    test('calculates progress correctly', () {
       final session = MeditationSession(
-        duration: Duration(minutes: 10),
-        currentTime: Duration(minutes: 5),
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 5),
+        status: MeditationStatus.running,
       );
-
       expect(session.progress, 0.5);
     });
 
-    test('copyWith should create new instance with updated values', () {
+    test('copyWith creates new instance with updated values', () {
       final original = MeditationSession(
-        duration: Duration(minutes: 10),
-        currentTime: Duration(minutes: 2),
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
-        activeAmbientSounds: {
-          'rain': AmbientSoundSettings(isActive: true, volume: 0.5),
-        },
       );
 
       final copy = original.copyWith(
-        duration: Duration(minutes: 15),
-        currentTime: Duration(minutes: 5),
         status: MeditationStatus.paused,
-        activeAmbientSounds: {
-          'rain': AmbientSoundSettings(isActive: false, volume: 0.7),
-        },
       );
 
-      expect(copy.duration, Duration(minutes: 15));
-      expect(copy.currentTime, Duration(minutes: 5));
+      expect(copy.duration, original.duration);
+      expect(copy.currentTime, original.currentTime);
       expect(copy.status, MeditationStatus.paused);
-      expect(copy.activeAmbientSounds['rain']?.isActive, false);
-      expect(copy.activeAmbientSounds['rain']?.volume, 0.7);
-
-      // Original should remain unchanged
-      expect(original.duration, Duration(minutes: 10));
-      expect(original.currentTime, Duration(minutes: 2));
-      expect(original.status, MeditationStatus.running);
-      expect(original.activeAmbientSounds['rain']?.isActive, true);
-      expect(original.activeAmbientSounds['rain']?.volume, 0.5);
+      expect(copy, isNot(same(original)));
     });
 
-    test('props should contain all fields', () {
-      final sounds = {
-        'rain': AmbientSoundSettings(),
-      };
-      final session = MeditationSession(
-        duration: Duration(minutes: 10),
-        currentTime: Duration(minutes: 5),
+    test('equality comparison works correctly', () {
+      final session1 = MeditationSession(
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
-        activeAmbientSounds: sounds,
       );
 
-      expect(session.props, [
-        Duration(minutes: 10),
-        Duration(minutes: 5),
-        MeditationStatus.running,
-        sounds,
-      ]);
-    });
-
-    test('toString should contain all field values', () {
-      final session = MeditationSession(
-        duration: Duration(minutes: 10),
-        currentTime: Duration(minutes: 5),
+      final session2 = MeditationSession(
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
-        activeAmbientSounds: {
-          'rain': AmbientSoundSettings(isActive: true, volume: 0.5),
-        },
       );
 
-      expect(
-        session.toString(),
-        contains('duration: 0:10:00.000000'),
+      final session3 = MeditationSession(
+        duration: const Duration(minutes: 10),
+        currentTime: const Duration(minutes: 6),
+        status: MeditationStatus.running,
       );
-      expect(
-        session.toString(),
-        contains('currentTime: 0:05:00.000000'),
-      );
-      expect(
-        session.toString(),
-        contains('status: MeditationStatus.running'),
-      );
-      expect(
-        session.toString(),
-        contains('activeAmbientSounds:'),
-      );
+
+      expect(session1, equals(session2));
+      expect(session1, isNot(equals(session3)));
     });
   });
 }

@@ -107,7 +107,7 @@ Features:
 - **Complexity**: Medium
 - **Dependencies**: MVP Meditation Tools
 - **Implementation Concerns**:
-  - Advanced audio processing
+  - Advanced audio processing (migrate to use https://pub.dev/packages/flutter_soloud)
   - Performance optimization
   - Content management system
 
