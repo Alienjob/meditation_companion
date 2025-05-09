@@ -17,7 +17,6 @@ class SupabaseAnalyticsService implements AnalyticsService {
 
   static const _queueKey = 'analytics_event_queue';
   static const _maxBatchSize = 50;
-  static const _uploadInterval = Duration(seconds: 30);
 
   late EventQueue _queue;
   Timer? _uploadTimer;
@@ -26,10 +25,13 @@ class SupabaseAnalyticsService implements AnalyticsService {
   SupabaseAnalyticsService({
     required SupabaseClient supabase,
     required SharedPreferences prefs,
+    Duration? uploadInterval,
   })  : _supabase = supabase,
         _prefs = prefs {
     _initializeQueue();
-    _startUploadTimer();
+    if (uploadInterval != null) {
+      _startUploadTimer(uploadInterval);
+    }
   }
 
   void _initializeQueue() {
@@ -45,9 +47,9 @@ class SupabaseAnalyticsService implements AnalyticsService {
     }
   }
 
-  void _startUploadTimer() {
+  void _startUploadTimer(Duration interval) {
     _uploadTimer?.cancel();
-    _uploadTimer = Timer.periodic(_uploadInterval, (_) {
+    _uploadTimer = Timer.periodic(interval, (_) {
       uploadPendingEvents();
     });
   }
@@ -136,14 +138,14 @@ class SupabaseAnalyticsService implements AnalyticsService {
 
       // Remove successfully uploaded events
       _queue.removeEvents(batch);
-      await _persistQueue();
     } catch (e) {
+      print('Error uploading events: $e');
       // Mark batch as failed and increment retry count
       final batch = _queue.getNextBatch(_maxBatchSize);
       _queue.markAsFailed(batch);
-      await _persistQueue();
       rethrow;
     } finally {
+      await _persistQueue();
       _isUploading = false;
     }
   }
