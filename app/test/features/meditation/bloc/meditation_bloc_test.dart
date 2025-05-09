@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:uuid/uuid.dart';
+import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
@@ -15,11 +17,15 @@ class MockTimerService extends Mock implements TimerService {}
 
 class MockAudioService extends Mock implements AudioService {}
 
+class MockAnalyticsService extends Mock implements AnalyticsService {}
+
 class FakeStreamSubscription<T> extends Fake implements StreamSubscription<T> {}
 
 void main() {
+  const testId = 'test-session-id';
   late TimerService timerService;
   late AudioService audioService;
+  late AnalyticsService analyticsService;
   late StreamController<Duration> timerController;
   late StreamController<Map<String, AmbientSoundSettings>> audioController;
 
@@ -50,6 +56,8 @@ void main() {
   setUp(() {
     timerService = MockTimerService();
     audioService = MockAudioService();
+    analyticsService = MockAnalyticsService();
+    when(() => analyticsService.trackEvent(any())).thenAnswer((_) async {});
     setupMocks();
   });
 
@@ -60,14 +68,14 @@ void main() {
 
   group('MeditationBloc', () {
     test('initial state is MeditationInitial', () {
-      final bloc = createBloc(timerService, audioService);
+      final bloc = createBloc(timerService, audioService, analyticsService);
       expect(bloc.state, isA<MeditationInitial>());
       bloc.close();
     });
 
     blocTest<MeditationBloc, MeditationState>(
       'StartMeditation starts timer and emits active state',
-      build: () => createBloc(timerService, audioService),
+      build: () => createBloc(timerService, audioService, analyticsService),
       act: (bloc) =>
           bloc.add(StartMeditation(duration: const Duration(minutes: 10))),
       expect: () => [
@@ -81,14 +89,16 @@ void main() {
       ],
       verify: (_) {
         verify(() => timerService.start(const Duration(minutes: 10))).called(1);
+        verify(() => analyticsService.trackEvent(any())).called(1);
       },
     );
 
     blocTest<MeditationBloc, MeditationState>(
       'StopMeditation stops timer and sounds',
-      build: () => createBloc(timerService, audioService),
+      build: () => createBloc(timerService, audioService, analyticsService),
       seed: () => MeditationActive(
         session: MeditationSession(
+          id: testId,
           duration: const Duration(minutes: 10),
           currentTime: const Duration(minutes: 5),
           status: MeditationStatus.running,
@@ -102,14 +112,16 @@ void main() {
           () => timerService.stop(),
           () => audioService.stopAllSounds(),
         ]);
+        verify(() => analyticsService.trackEvent(any())).called(1);
       },
     );
 
     blocTest<MeditationBloc, MeditationState>(
       'completes meditation when time is up',
-      build: () => createBloc(timerService, audioService),
+      build: () => createBloc(timerService, audioService, analyticsService),
       seed: () => MeditationActive(
         session: MeditationSession(
+          id: testId,
           duration: const Duration(minutes: 10),
           currentTime: const Duration(minutes: 9),
           status: MeditationStatus.running,
@@ -135,15 +147,20 @@ void main() {
           () => audioService.stopAllSounds(),
           () => timerService.stop(),
         ]);
+        verify(() => analyticsService.trackEvent(any())).called(1);
       },
     );
   });
 }
 
 MeditationBloc createBloc(
-    TimerService timerService, AudioService audioService) {
+  TimerService timerService,
+  AudioService audioService,
+  AnalyticsService analyticsService,
+) {
   return MeditationBloc(
     timerService: timerService,
     audioService: audioService,
+    analyticsService: analyticsService,
   );
 }

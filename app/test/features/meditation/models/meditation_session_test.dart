@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meditation_companion/features/meditation/models/meditation_session.dart';
 
 void main() {
+  const testId = 'test-session-id';
   group('MeditationSession', () {
     test('creates initial session', () {
       final session = MeditationSession.initial(
@@ -15,6 +16,7 @@ void main() {
     test('validates positive duration', () {
       expect(
         () => MeditationSession(
+          id: testId,
           duration: Duration.zero,
           currentTime: Duration.zero,
           status: MeditationStatus.running,
@@ -24,6 +26,7 @@ void main() {
 
       expect(
         () => MeditationSession(
+          id: testId,
           duration: const Duration(minutes: -1),
           currentTime: Duration.zero,
           status: MeditationStatus.running,
@@ -35,6 +38,7 @@ void main() {
     test('validates current time range', () {
       expect(
         () => MeditationSession(
+          id: testId,
           duration: const Duration(minutes: 10),
           currentTime: const Duration(minutes: -1),
           status: MeditationStatus.running,
@@ -44,6 +48,7 @@ void main() {
 
       expect(
         () => MeditationSession(
+          id: testId,
           duration: const Duration(minutes: 10),
           currentTime: const Duration(minutes: 11),
           status: MeditationStatus.running,
@@ -94,6 +99,7 @@ void main() {
 
     test('calculates remaining time correctly', () {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 3),
         status: MeditationStatus.running,
@@ -103,6 +109,7 @@ void main() {
 
     test('calculates progress correctly', () {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
@@ -112,6 +119,7 @@ void main() {
 
     test('copyWith creates new instance with updated values', () {
       final original = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
@@ -129,18 +137,21 @@ void main() {
 
     test('equality comparison works correctly', () {
       final session1 = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
       );
 
       final session2 = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
       );
 
       final session3 = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 6),
         status: MeditationStatus.running,

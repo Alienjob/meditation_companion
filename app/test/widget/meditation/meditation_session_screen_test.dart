@@ -35,6 +35,7 @@ class MockMeditationBloc extends Mock implements MeditationBloc {
 }
 
 void main() {
+  const testId = 'test-session-id';
   late MockMeditationBloc bloc;
 
   setUpAll(() {
@@ -86,6 +87,7 @@ void main() {
 
     testWidgets('shows controls when meditation is active', (tester) async {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
@@ -104,6 +106,7 @@ void main() {
 
     testWidgets('shows ambient sound controls', (tester) async {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.running,
@@ -139,6 +142,7 @@ void main() {
 
     testWidgets('shows play button when meditation is paused', (tester) async {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 5),
         status: MeditationStatus.paused,
@@ -156,6 +160,7 @@ void main() {
 
     testWidgets('shows completed state', (tester) async {
       final session = MeditationSession(
+        id: testId,
         duration: const Duration(minutes: 10),
         currentTime: const Duration(minutes: 10),
         status: MeditationStatus.completed,

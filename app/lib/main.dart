@@ -1,20 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/config/env_config.dart';
+import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
+import 'package:meditation_companion/features/analytics/services/supabase_analytics_service.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/real_audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/real_timer_service.dart';
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
 import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MainApp());
+
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: EnvConfig.supabaseUrl,
+    anonKey: EnvConfig.supabaseAnonKey,
+  );
+
+  // Initialize SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+
+  // Initialize AnalyticsService
+  final analyticsService = SupabaseAnalyticsService(
+    supabase: Supabase.instance.client,
+    prefs: prefs,
+  );
+
+  runApp(MainApp(analyticsService: analyticsService));
 }
 
 class MainApp extends StatefulWidget {
-  const MainApp({super.key});
+  final AnalyticsService analyticsService;
+
+  const MainApp({
+    super.key,
+    required this.analyticsService,
+  });
 
   @override
   State<MainApp> createState() => _MainAppState();
@@ -64,11 +89,15 @@ class _MainAppState extends State<MainApp> {
           RepositoryProvider<AudioService>(
             create: (_) => _audioService,
           ),
+          RepositoryProvider<AnalyticsService>(
+            create: (_) => widget.analyticsService,
+          ),
         ],
         child: BlocProvider(
           create: (context) => MeditationBloc(
             timerService: context.read<TimerService>(),
             audioService: context.read<AudioService>(),
+            analyticsService: context.read<AnalyticsService>(),
           ),
           child: const MeditationSessionScreen(),
         ),
