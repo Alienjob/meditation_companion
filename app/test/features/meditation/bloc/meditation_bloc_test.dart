@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:uuid/uuid.dart';
 import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
+import 'package:meditation_companion/features/analytics/models/analytics_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
@@ -20,6 +21,8 @@ class MockAudioService extends Mock implements AudioService {}
 class MockAnalyticsService extends Mock implements AnalyticsService {}
 
 class FakeStreamSubscription<T> extends Fake implements StreamSubscription<T> {}
+
+class FakeAnalyticsEvent extends Fake implements AnalyticsEvent {}
 
 void main() {
   const testId = 'test-session-id';
@@ -51,6 +54,7 @@ void main() {
     registerFallbackValue(FakeStreamSubscription<Duration>());
     registerFallbackValue(
         FakeStreamSubscription<Map<String, AmbientSoundSettings>>());
+    registerFallbackValue(FakeAnalyticsEvent());
   });
 
   setUp(() {
@@ -162,5 +166,6 @@ MeditationBloc createBloc(
     timerService: timerService,
     audioService: audioService,
     analyticsService: analyticsService,
+    sessionId: 'test application session id',
   );
 }

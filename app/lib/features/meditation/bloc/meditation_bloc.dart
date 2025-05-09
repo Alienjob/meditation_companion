@@ -17,7 +17,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
   final AudioService _audioService;
   final AnalyticsService _analyticsService;
   final _uuid = const Uuid();
-  String? _currentSessionId;
+  final String sessionId;
   String? _currentUserId;
   StreamSubscription<Duration>? _timerSubscription;
   StreamSubscription<Map<String, AmbientSoundSettings>>? _audioSubscription;
@@ -26,6 +26,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     required TimerService timerService,
     required AudioService audioService,
     required AnalyticsService analyticsService,
+    required this.sessionId,
   })  : _timerService = timerService,
         _audioService = audioService,
         _analyticsService = analyticsService,
@@ -49,7 +50,6 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     Emitter<MeditationState> emit,
   ) async {
     try {
-      _currentSessionId = _uuid.v4();
       await _timerService.start(event.duration);
       _subscribeToTimer();
 
@@ -58,7 +58,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
       await _analyticsService.trackEvent(
         analytics.MeditationEvent.started(
           id: _uuid.v4(),
-          sessionId: _currentSessionId!,
+          sessionId: sessionId,
           userId: _currentUserId ?? 'anonymous',
           meditationId: session.id,
           plannedDuration: event.duration,
@@ -87,7 +87,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
         await _analyticsService.trackEvent(
           analytics.MeditationEvent(
             id: _uuid.v4(),
-            sessionId: _currentSessionId!,
+            sessionId: sessionId,
             userId: _currentUserId ?? 'anonymous',
             timestamp: DateTime.now(),
             eventType: 'meditation.session.pause',
@@ -121,7 +121,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
         await _analyticsService.trackEvent(
           analytics.MeditationEvent(
             id: _uuid.v4(),
-            sessionId: _currentSessionId!,
+            sessionId: sessionId,
             userId: _currentUserId ?? 'anonymous',
             timestamp: DateTime.now(),
             eventType: 'meditation.session.resume',
@@ -147,6 +147,27 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     Emitter<MeditationState> emit,
   ) async {
     try {
+      if (state is MeditationActive) {
+        final currentState = state as MeditationActive;
+        final session = currentState.session;
+
+        // Track the stop event
+        await _analyticsService.trackEvent(
+          analytics.MeditationEvent(
+            id: _uuid.v4(),
+            sessionId: sessionId,
+            userId: _currentUserId ?? 'anonymous',
+            timestamp: DateTime.now(),
+            eventType: 'meditation.session.stop',
+            meditationId: session.id,
+            additionalParams: {
+              'currentTime': session.currentTime.inSeconds.toString(),
+              'duration': session.duration.inSeconds.toString(),
+            },
+          ),
+        );
+      }
+
       await _timerService.stop();
       await _audioService.stopAllSounds();
       _unsubscribeFromTimer();
@@ -168,7 +189,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
         await _analyticsService.trackEvent(
           analytics.AudioEvent.soundToggled(
             id: _uuid.v4(),
-            sessionId: _currentSessionId!,
+            sessionId: sessionId,
             userId: _currentUserId ?? 'anonymous',
             soundId: event.soundId,
             isActive: event.active,
@@ -193,7 +214,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
         await _analyticsService.trackEvent(
           analytics.AudioEvent.volumeChanged(
             id: _uuid.v4(),
-            sessionId: _currentSessionId!,
+            sessionId: sessionId,
             userId: _currentUserId ?? 'anonymous',
             soundId: event.soundId,
             volume: event.volume,
@@ -231,7 +252,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
       await _analyticsService.trackEvent(
         analytics.MeditationEvent.completed(
           id: _uuid.v4(),
-          sessionId: _currentSessionId!,
+          sessionId: sessionId,
           userId: _currentUserId ?? 'anonymous',
           meditationId: completedSession.id,
           actualDuration: completedSession.currentTime,

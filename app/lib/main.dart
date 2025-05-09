@@ -11,9 +11,12 @@ import 'package:meditation_companion/features/meditation/services/timer_service.
 import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final appSessionId = const Uuid().v4();
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -30,15 +33,17 @@ Future<void> main() async {
     prefs: prefs,
   );
 
-  runApp(MainApp(analyticsService: analyticsService));
+  runApp(MainApp(analyticsService: analyticsService, sessionId: appSessionId));
 }
 
 class MainApp extends StatefulWidget {
   final AnalyticsService analyticsService;
+  final String sessionId;
 
   const MainApp({
     super.key,
     required this.analyticsService,
+    required this.sessionId,
   });
 
   @override
@@ -98,6 +103,7 @@ class _MainAppState extends State<MainApp> {
             timerService: context.read<TimerService>(),
             audioService: context.read<AudioService>(),
             analyticsService: context.read<AnalyticsService>(),
+            sessionId: widget.sessionId,
           ),
           child: const MeditationSessionScreen(),
         ),
