@@ -85,7 +85,7 @@ class SupabaseAnalyticsService implements AnalyticsService {
     required String deviceInfo,
     required String appVersion,
   }) async {
-    final sessionId = _uuid.v4();
+    sessionId = _uuid.v4();
 
     // Handle anonymous users with consistent ID
     String actualUserId;
@@ -108,7 +108,7 @@ class SupabaseAnalyticsService implements AnalyticsService {
       'app_version': appVersion,
     });
 
-    return sessionId;
+    return sessionId!;
   }
 
   @override
