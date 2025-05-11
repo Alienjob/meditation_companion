@@ -15,7 +15,6 @@ void main() {
   AnalyticsEvent createTestEvent(String id) {
     return AnalyticsEvent(
       id: id,
-      sessionId: 'test_session',
       userId: 'test_user',
       timestamp: DateTime.now(),
       eventType: 'test.event',

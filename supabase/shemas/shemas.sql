@@ -63,26 +63,32 @@ ALTER TABLE app_sessions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Sessions are viewable by user" ON app_sessions
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
 
-CREATE POLICY "Sessions are insertable by user" ON app_sessions
+CREATE POLICY "Sessions are insertable" ON app_sessions
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (true);
 
 CREATE POLICY "Sessions are updatable by user" ON app_sessions
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
 
 -- Events policies
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Events are viewable by user" ON events
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
 
-CREATE POLICY "Events are insertable by user" ON events
+CREATE POLICY "Events are insertable" ON events
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (true);
 
 -- Event parameters policies
 ALTER TABLE event_parameters ENABLE ROW LEVEL SECURITY;
@@ -93,16 +99,12 @@ CREATE POLICY "Parameters are viewable by event owner" ON event_parameters
         EXISTS (
             SELECT 1 FROM events
             WHERE events.id = event_parameters.event_id
-            AND events.user_id = auth.uid()
+            AND (events.user_id = auth.uid() OR events.user_id IN (
+                SELECT user_id FROM app_sessions WHERE end_time IS NULL
+            ))
         )
     );
 
-CREATE POLICY "Parameters are insertable by event owner" ON event_parameters
+CREATE POLICY "Parameters are insertable" ON event_parameters
     FOR INSERT
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM events
-            WHERE events.id = event_parameters.event_id
-            AND events.user_id = auth.uid()
-        )
-    );
+    WITH CHECK (true);

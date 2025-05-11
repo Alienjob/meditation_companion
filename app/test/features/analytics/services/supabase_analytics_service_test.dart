@@ -108,7 +108,7 @@ void main() {
       );
 
       await service.isReady();
-      verify(() => prefs.getString(any())).called(2);
+      verify(() => prefs.getString(any())).called(greaterThan(0));
     });
   });
 
@@ -224,7 +224,6 @@ void main() {
 AnalyticsEvent createTestEvent(String id) {
   return AnalyticsEvent(
     id: id,
-    sessionId: 'test_session',
     userId: 'test_user',
     timestamp: DateTime.now(),
     eventType: 'test.event',

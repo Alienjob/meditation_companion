@@ -3,7 +3,6 @@ import 'package:equatable/equatable.dart';
 /// Base class for all analytics events
 class AnalyticsEvent extends Equatable {
   final String id;
-  final String sessionId;
   final String userId;
   final DateTime timestamp;
   final String eventType;
@@ -11,7 +10,6 @@ class AnalyticsEvent extends Equatable {
 
   AnalyticsEvent({
     required this.id,
-    required this.sessionId,
     required this.userId,
     required this.timestamp,
     required this.eventType,
@@ -21,7 +19,6 @@ class AnalyticsEvent extends Equatable {
   @override
   List<Object?> get props => [
         id,
-        sessionId,
         userId,
         timestamp,
         eventType,
@@ -39,7 +36,6 @@ class MeditationEvent extends AnalyticsEvent {
 
   MeditationEvent({
     required super.id,
-    required super.sessionId,
     required super.userId,
     required super.timestamp,
     required super.eventType,
@@ -52,14 +48,12 @@ class MeditationEvent extends AnalyticsEvent {
 
   factory MeditationEvent.started({
     required String id,
-    required String sessionId,
     required String userId,
     required String meditationId,
     required Duration plannedDuration,
   }) {
     return MeditationEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'meditation.session.start',
@@ -72,14 +66,12 @@ class MeditationEvent extends AnalyticsEvent {
 
   factory MeditationEvent.completed({
     required String id,
-    required String sessionId,
     required String userId,
     required String meditationId,
     required Duration actualDuration,
   }) {
     return MeditationEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'meditation.session.complete',
@@ -98,7 +90,6 @@ class AudioEvent extends AnalyticsEvent {
 
   AudioEvent({
     required super.id,
-    required super.sessionId,
     required super.userId,
     required super.timestamp,
     required super.eventType,
@@ -113,7 +104,6 @@ class AudioEvent extends AnalyticsEvent {
 
   factory AudioEvent.volumeChanged({
     required String id,
-    required String sessionId,
     required String userId,
     required String soundId,
     required double volume,
@@ -121,7 +111,6 @@ class AudioEvent extends AnalyticsEvent {
   }) {
     return AudioEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'audio.volume.change',
@@ -135,7 +124,6 @@ class AudioEvent extends AnalyticsEvent {
 
   factory AudioEvent.soundToggled({
     required String id,
-    required String sessionId,
     required String userId,
     required String soundId,
     required bool isActive,
@@ -143,7 +131,6 @@ class AudioEvent extends AnalyticsEvent {
   }) {
     return AudioEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'audio.sound.toggle',
@@ -160,7 +147,6 @@ class AudioEvent extends AnalyticsEvent {
 class UIEvent extends AnalyticsEvent {
   UIEvent({
     required super.id,
-    required super.sessionId,
     required super.userId,
     required super.timestamp,
     required super.eventType,
@@ -173,14 +159,12 @@ class UIEvent extends AnalyticsEvent {
 
   factory UIEvent.screenView({
     required String id,
-    required String sessionId,
     required String userId,
     required String screenName,
     String? meditationId,
   }) {
     return UIEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'ui.screen.view',
@@ -193,7 +177,6 @@ class UIEvent extends AnalyticsEvent {
 
   factory UIEvent.buttonClick({
     required String id,
-    required String sessionId,
     required String userId,
     required String buttonId,
     required String screenName,
@@ -201,7 +184,6 @@ class UIEvent extends AnalyticsEvent {
   }) {
     return UIEvent(
       id: id,
-      sessionId: sessionId,
       userId: userId,
       timestamp: DateTime.now(),
       eventType: 'ui.button.click',

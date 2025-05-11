@@ -26,7 +26,6 @@ class QueuedEvent {
     return {
       'event': {
         'id': event.id,
-        'sessionId': event.sessionId,
         'userId': event.userId,
         'timestamp': event.timestamp.toIso8601String(),
         'eventType': event.eventType,
@@ -41,7 +40,6 @@ class QueuedEvent {
     final eventJson = json['event'] as Map<String, dynamic>;
     final event = AnalyticsEvent(
       id: eventJson['id'] as String,
-      sessionId: eventJson['sessionId'] as String,
       userId: eventJson['userId'] as String,
       timestamp: DateTime.parse(eventJson['timestamp'] as String),
       eventType: eventJson['eventType'] as String,

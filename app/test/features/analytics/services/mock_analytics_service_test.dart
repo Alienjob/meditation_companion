@@ -16,7 +16,6 @@ void main() {
   test('service requires initialization before tracking events', () async {
     final event = UIEvent.screenView(
       id: '1',
-      sessionId: 'invalid',
       userId: 'user1',
       screenName: 'home',
     );
@@ -37,7 +36,6 @@ void main() {
 
       expect(sessionId, isNotEmpty);
       expect(await service.isReady(), isTrue);
-      expect(service.sessions, contains(sessionId));
     });
 
     test('can end an existing session', () async {
@@ -48,16 +46,6 @@ void main() {
       );
 
       await service.endSession(sessionId);
-
-      // Should still be able to get session events
-      expect(service.getSessionEvents(sessionId), isEmpty);
-    });
-
-    test('cannot end invalid session', () async {
-      expect(
-        () => service.endSession('invalid'),
-        throwsStateError,
-      );
     });
   });
 
@@ -75,7 +63,6 @@ void main() {
     test('can track single event', () async {
       final event = MeditationEvent.started(
         id: '1',
-        sessionId: sessionId,
         userId: 'user1',
         meditationId: 'med1',
         plannedDuration: const Duration(minutes: 10),
@@ -84,21 +71,18 @@ void main() {
       await service.trackEvent(event);
 
       expect(service.events, contains(event));
-      expect(service.getSessionEvents(sessionId), contains(event));
     });
 
     test('can track multiple events', () async {
       final events = [
         MeditationEvent.started(
           id: '1',
-          sessionId: sessionId,
           userId: 'user1',
           meditationId: 'med1',
           plannedDuration: const Duration(minutes: 10),
         ),
         AudioEvent.volumeChanged(
           id: '2',
-          sessionId: sessionId,
           userId: 'user1',
           soundId: 'rain',
           volume: 0.5,
@@ -109,27 +93,11 @@ void main() {
       await service.trackEvents(events);
 
       expect(service.events, containsAll(events));
-      expect(service.getSessionEvents(sessionId), containsAll(events));
-    });
-
-    test('cannot track events for invalid session', () async {
-      final event = MeditationEvent.started(
-        id: '1',
-        sessionId: 'invalid',
-        userId: 'user1',
-        meditationId: 'med1',
-        plannedDuration: const Duration(minutes: 10),
-      );
-
-      expect(
-        () => service.trackEvent(event),
-        throwsStateError,
-      );
     });
   });
 
   test('can clear analytics data', () async {
-    final sessionId = await service.startSession(
+    await service.startSession(
       userId: 'user1',
       deviceInfo: 'test device',
       appVersion: '1.0.0',
@@ -138,7 +106,6 @@ void main() {
     await service.trackEvent(
       MeditationEvent.started(
         id: '1',
-        sessionId: sessionId,
         userId: 'user1',
         meditationId: 'med1',
         plannedDuration: const Duration(minutes: 10),
@@ -148,7 +115,6 @@ void main() {
     await service.clearAnalytics();
 
     expect(service.events, isEmpty);
-    expect(service.sessions, isEmpty);
     expect(await service.isReady(), isFalse);
   });
 

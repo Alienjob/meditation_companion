@@ -166,6 +166,5 @@ MeditationBloc createBloc(
     timerService: timerService,
     audioService: audioService,
     analyticsService: analyticsService,
-    sessionId: 'test application session id',
   );
 }
