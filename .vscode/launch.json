@@ -9,6 +9,7 @@
             "args": [
                 "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
+                "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
                 "-d",
                 "chrome",
             ],

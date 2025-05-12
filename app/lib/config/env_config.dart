@@ -1,4 +1,13 @@
 class EnvConfig {
+  static String get openApiKey {
+    const value = String.fromEnvironment('OPENAI_API_KEY');
+    if (value.isEmpty) {
+      throw Exception(
+          'OPENAI_API_KEY not provided. Use --dart-define=OPENAI_API_KEY=<value>');
+    }
+    return value;
+  }
+
   static String get supabaseUrl {
     const value = String.fromEnvironment('SUPABASE_URL');
     if (value.isEmpty) {
