@@ -69,7 +69,7 @@ Features:
 - Simple progress visualizations
 - Session history
 
-### 4. Basic Interactive Guidance
+### 4. Basic Interactive Guidance https://pub.dev/packages/openai_realtime_dart
 - **Story Points**: 8
 - **Complexity**: Medium
 - **Dependencies**: Basic Meditation Tools, User Authentication Setup
