@@ -29,12 +29,10 @@ enum VoiceStreamState {
 
 ```dart
 class RealAudioService implements AudioService {
-  final PositionTracker _positionTracker;
   late final AudioSource _stream;
   final _stateController = StreamController<VoiceStreamState>.broadcast();
   
   Future<void> appendVoiceChunk(String itemId, Uint8List audioData) async {
-    _positionTracker.addChunk(itemId, audioData.length);
     await SoLoud.instance.addAudioDataStream(_stream, audioData);
     _stateController.add(VoiceStreamState.playing);
   }
@@ -78,3 +76,10 @@ class RealAudioService implements AudioService {
    - Call stopVoice() in idle state
    - Verify stays in idle state
    - Verify no errors occur
+
+3. `should_handle_additional_chunks_after_stop`
+   - Append first chunk and verify playing state
+   - Call stopVoice()
+   - Verify state changes to idle
+   - Append new chunk
+   - Verify state changes to playing
