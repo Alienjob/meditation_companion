@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
@@ -63,4 +64,20 @@ class MockAudioService implements AudioService {
   Future<void> dispose() async {
     await _settingsController.close();
   }
+
+  @override
+  Future<void> appendVoiceChunk(String itemId, Uint8List audioData) {
+    // TODO: implement appendVoiceChunk
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> stopVoice() {
+    // TODO: implement stopVoice
+    throw UnimplementedError();
+  }
+
+  @override
+  // TODO: implement voiceStreamState
+  Stream<VoiceStreamState> get voiceStreamState => throw UnimplementedError();
 }
