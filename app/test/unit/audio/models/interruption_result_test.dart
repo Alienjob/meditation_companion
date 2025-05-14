@@ -3,97 +3,122 @@ import 'package:meditation_companion/features/audio/models/interruption_result.d
 
 void main() {
   group('InterruptionResult', () {
-    test('should create instance with required parameters', () {
+    test('creates with valid parameters', () {
       final result = InterruptionResult(
-        itemId: 'test_id',
+        itemId: 'test_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
-      expect(result.itemId, 'test_id');
-      expect(result.sampleCount, 1000);
-      expect(result.timestamp, 1620000000000);
+      expect(result.itemId, equals('test_chunk'));
+      expect(result.sampleCount, equals(1000));
+      expect(result.timestamp, equals(1620000000000));
     });
 
-    test('should be immutable', () {
-      // Verify const constructor works
-      const instance1 = InterruptionResult(
-        itemId: 'test_id',
-        sampleCount: 1000,
+    test('creates with empty itemId', () {
+      final result = InterruptionResult(
+        itemId: '',
+        sampleCount: 0,
         timestamp: 1620000000000,
       );
 
-      const instance2 = InterruptionResult(
-        itemId: 'test_id',
-        sampleCount: 1000,
-        timestamp: 1620000000000,
-      );
-
-      // Same values should create identical instances
-      expect(identical(instance1, instance2), isTrue);
-
-      // Fields should be final
-      final result = const InterruptionResult(
-        itemId: 'test_id',
-        sampleCount: 1000,
-        timestamp: 1620000000000,
-      );
-
-      expect(result.runtimeType.toString(), contains('InterruptionResult'));
+      expect(result.itemId, isEmpty);
+      expect(result.sampleCount, equals(0));
+      expect(result.timestamp, equals(1620000000000));
     });
 
-    test('equals should work correctly', () {
-      const result1 = InterruptionResult(
-        itemId: 'test_id',
+    test('equals and hashCode work correctly', () {
+      final result1 = InterruptionResult(
+        itemId: 'test_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
-      const result2 = InterruptionResult(
-        itemId: 'test_id',
+      final result2 = InterruptionResult(
+        itemId: 'test_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
-      const result3 = InterruptionResult(
-        itemId: 'different_id',
+      final different = InterruptionResult(
+        itemId: 'other_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
       expect(result1, equals(result2));
-      expect(result1, isNot(equals(result3)));
+      expect(result1.hashCode, equals(result2.hashCode));
+      expect(result1, isNot(equals(different)));
     });
 
-    test('props should contain all fields', () {
-      const result = InterruptionResult(
-        itemId: 'test_id',
+    test('toString provides meaningful description', () {
+      final result = InterruptionResult(
+        itemId: 'test_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
       expect(
-          result.props,
-          containsAll([
-            'test_id',
-            1000,
-            1620000000000,
-          ]));
+        result.toString(),
+        contains('test_chunk'),
+        reason: 'toString should include the itemId',
+      );
+      expect(
+        result.toString(),
+        contains('1000'),
+        reason: 'toString should include the sampleCount',
+      );
+      expect(
+        result.toString(),
+        contains('1620000000000'),
+        reason: 'toString should include the timestamp',
+      );
     });
 
-    test('toString provides meaningful description', () {
-      const result = InterruptionResult(
-        itemId: 'test_id',
+    test('const constructor creates identical instances', () {
+      const result1 = InterruptionResult(
+        itemId: 'test_chunk',
         sampleCount: 1000,
         timestamp: 1620000000000,
       );
 
-      expect(result.toString(), contains('itemId'));
-      expect(result.toString(), contains('test_id'));
-      expect(result.toString(), contains('sampleCount'));
-      expect(result.toString(), contains('1000'));
-      expect(result.toString(), contains('timestamp'));
-      expect(result.toString(), contains('1620000000000'));
+      const result2 = InterruptionResult(
+        itemId: 'test_chunk',
+        sampleCount: 1000,
+        timestamp: 1620000000000,
+      );
+
+      expect(identical(result1, result2), isTrue);
+    });
+
+    test('compares fields individually', () {
+      final base = InterruptionResult(
+        itemId: 'test_chunk',
+        sampleCount: 1000,
+        timestamp: 1620000000000,
+      );
+
+      final differentId = InterruptionResult(
+        itemId: 'other_chunk',
+        sampleCount: 1000,
+        timestamp: 1620000000000,
+      );
+
+      final differentSamples = InterruptionResult(
+        itemId: 'test_chunk',
+        sampleCount: 2000,
+        timestamp: 1620000000000,
+      );
+
+      final differentTimestamp = InterruptionResult(
+        itemId: 'test_chunk',
+        sampleCount: 1000,
+        timestamp: 1620000001000,
+      );
+
+      expect(base, isNot(equals(differentId)));
+      expect(base, isNot(equals(differentSamples)));
+      expect(base, isNot(equals(differentTimestamp)));
     });
   });
 }

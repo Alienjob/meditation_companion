@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:meditation_companion/config/env_config.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
+import '../meditation/services/audio_service.dart';
 import '../chat/bloc/chat_bloc.dart';
-import '../chat/bloc/chat_event.dart';
+import '../chat/repository/chat_repository.dart';
 import '../chat/views/chat_widget.dart';
-import 'repository/voice_assistant_repository.dart';
+import './bloc/assistant_bloc.dart';
+import './bloc/assistant_event.dart';
+import './bloc/assistant_state.dart';
+import './services/mock_audio_recorder.dart';
 
 class VoiceAssistantWidget extends StatefulWidget {
   const VoiceAssistantWidget({super.key});
@@ -16,92 +19,167 @@ class VoiceAssistantWidget extends StatefulWidget {
 
 class _VoiceAssistantWidgetState extends State<VoiceAssistantWidget> {
   late final RealtimeClient _client;
-  late final VoiceAssistantRepository _repository;
   late final ChatBloc _chatBloc;
+  late final AssistantBloc _assistantBloc;
+  late final AudioService _audioService;
+  late final MockAudioRecorder _recorder;
 
   @override
   void initState() {
     super.initState();
+
     _client = RealtimeClient(
-      apiKey: EnvConfig.openApiKey,
+      apiKey: const String.fromEnvironment('OPENAI_API_KEY'),
       dangerouslyAllowAPIKeyInBrowser: true,
-      debug: true,
     );
-    _repository = VoiceAssistantRepository(_client);
-    _chatBloc = ChatBloc(_repository)..add(ChatStreamConnected());
+
+    _audioService = context.read<AudioService>();
+    _recorder = MockAudioRecorder();
+    final chatRepository = context.read<IChatRepository>();
+    _chatBloc = ChatBloc(chatRepository);
+
+    _assistantBloc = AssistantBloc(
+      chatBloc: _chatBloc,
+      audioService: _audioService,
+      recorder: _recorder,
+      client: _client,
+    );
+
+    _setupAssistant();
   }
 
-  @override
-  Future<void> didChangeDependencies() async {
-    super.didChangeDependencies();
-
+  Future<void> _setupAssistant() async {
     await _client.updateSession(
-        instructions: 'You are a great, upbeat friend.');
-    await _client.updateSession(voice: Voice.alloy);
-    await _client.updateSession(
-      turnDetection: TurnDetection(
-        type: TurnDetectionType.serverVad,
-      ),
-      inputAudioTranscription: InputAudioTranscriptionConfig(
-        model: 'whisper-1',
-      ),
+      instructions: 'You are a friendly meditation assistant.',
+      voice: Voice.alloy,
     );
 
-    _client.on(RealtimeEventType.error, (event) {
-      final error = (event as RealtimeEventError).error;
-      // Show error in UI if needed
-      debugPrint('Realtime error: $error');
-    });
-
-    _client.on(RealtimeEventType.conversationInterrupted, (event) {
-      // Handle interruption if needed
-      debugPrint('Conversation interrupted: ${event.toString()}');
-    });
-
-    _client.on(RealtimeEventType.conversationUpdated, (event) {
-      _repository.handleConversationUpdated(
-        event as RealtimeEventConversationUpdated,
-      );
-    });
-
-    _client.on(RealtimeEventType.conversationItemAppended, (event) {
-      _repository.handleConversationItemAppended(
-        event as RealtimeEventConversationItemAppended,
-      );
-    });
-
-    _client.on(RealtimeEventType.conversationItemCompleted, (event) {
-      _repository.handleConversationItemCompleted(
-        event as RealtimeEventConversationItemCompleted,
-      );
-    });
-
     await _client.connect();
-
-    // Initial greeting
-    await _client.sendUserMessageContent([
-      const ContentPart.inputText(
-        text: 'Hi! I\'m here to help with your meditation practice.',
-      ),
-    ]);
+    _assistantBloc.add(ClientConnected());
   }
 
   @override
   void dispose() {
+    _assistantBloc.close();
     _chatBloc.close();
-    _repository.dispose();
+    _recorder.dispose();
     _client.disconnect();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: _chatBloc,
-      child: const Scaffold(
-        body: SafeArea(
-          child: ChatWidget(),
+    return Scaffold(
+      body: SafeArea(
+        child: MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: _chatBloc),
+            BlocProvider.value(value: _assistantBloc),
+          ],
+          child: Column(
+            children: [
+              Expanded(
+                child: ChatWidget(),
+              ),
+              _buildControls(),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildControls() {
+    return BlocBuilder<AssistantBloc, AssistantState>(
+      builder: (context, state) {
+        if (state.userInput == UserInputState.recording) {
+          return _buildRecordingControls(context, state);
+        }
+
+        if (state.userInput == UserInputState.recorded) {
+          return _buildSendControls(context);
+        }
+
+        if (state.responseState == ResponseState.responding) {
+          return _buildInterruptControls(context);
+        }
+
+        return _buildMicButton(context, state);
+      },
+    );
+  }
+
+  Widget _buildRecordingControls(BuildContext context, AssistantState state) {
+    final progress = state.recordingDuration.inMilliseconds /
+        AssistantState.maxRecordingDuration.inMilliseconds;
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(value: progress),
+          const SizedBox(width: 16),
+          Text('${state.recordingDuration.inSeconds}s'),
+          const SizedBox(width: 16),
+          IconButton(
+            icon: const Icon(Icons.stop),
+            onPressed: () => context
+                .read<AssistantBloc>()
+                .add(StopRecordingUserAudioInput()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSendControls(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: () =>
+                context.read<AssistantBloc>().add(SendRecordedAudio()),
+          ),
+          const SizedBox(width: 16),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () =>
+                context.read<AssistantBloc>().add(ClearRecordedAudio()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInterruptControls(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: ElevatedButton.icon(
+        icon: const Icon(Icons.pan_tool),
+        label: const Text('Interrupt'),
+        onPressed: () => context.read<AssistantBloc>().add(InterruptResponse()),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMicButton(BuildContext context, AssistantState state) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: IconButton(
+        icon: const Icon(Icons.mic),
+        onPressed: state.canRecord
+            ? () => context
+                .read<AssistantBloc>()
+                .add(StartRecordingUserAudioInput())
+            : null,
+        iconSize: 48,
       ),
     );
   }
