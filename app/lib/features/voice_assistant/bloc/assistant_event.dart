@@ -77,3 +77,10 @@ class ResponseCompleted extends AssistantEvent {
   @override
   List<Object?> get props => [itemId];
 }
+
+class UpdateRecordingDuration extends AssistantEvent {
+  const UpdateRecordingDuration();
+
+  @override
+  List<Object?> get props => [];
+}

@@ -16,14 +16,7 @@ class MockAudioService extends Mock implements AudioService {}
 
 class MockAudioRecorder extends Mock implements AudioRecorder {}
 
-class MockRealtimeClient extends Mock implements RealtimeClient {
-  @override
-  Future<bool> sendUserMessageContent(List<ContentPart> parts) async => true;
-  @override
-  Future<ItemMessage?> cancelResponse(
-          [String? itemId = null, int? sampleCount]) async =>
-      null;
-}
+class MockRealtimeClient extends Mock implements RealtimeClient {}
 
 void main() {
   late AssistantBloc bloc;
@@ -45,6 +38,12 @@ void main() {
     // Default stub for stream methods
     when(() => audioService.voiceStreamState)
         .thenAnswer((_) => Stream.value(VoiceStreamState.idle));
+
+    // Stub the client methods properly
+    when(() => client.sendUserMessageContent(any()))
+        .thenAnswer((_) async => true);
+    when(() => client.cancelResponse(any(), any()))
+        .thenAnswer((_) async => null);
 
     bloc = AssistantBloc(
       chatBloc: chatBloc,
@@ -85,17 +84,16 @@ void main() {
     );
 
     blocTest<AssistantBloc, AssistantState>(
-      'handles recording start and stop',
+      'handles recording start and duration updates',
       build: () => bloc,
       seed: () => const AssistantState(clientStatus: ClientStatus.ready),
       act: (bloc) async {
         when(() => recorder.startRecording()).thenAnswer((_) async {});
-        when(() => recorder.stopRecording())
-            .thenAnswer((_) async => Uint8List.fromList([0]));
 
         bloc.add(StartRecordingUserAudioInput());
-        await Future.delayed(const Duration(milliseconds: 100));
-        bloc.add(StopRecordingUserAudioInput());
+        // Simulate timer events
+        bloc.add(const UpdateRecordingDuration());
+        bloc.add(const UpdateRecordingDuration());
       },
       expect: () => [
         const AssistantState(
@@ -105,8 +103,13 @@ void main() {
         ),
         const AssistantState(
           clientStatus: ClientStatus.ready,
-          userInput: UserInputState.recorded,
+          userInput: UserInputState.recording,
           recordingDuration: Duration(milliseconds: 100),
+        ),
+        const AssistantState(
+          clientStatus: ClientStatus.ready,
+          userInput: UserInputState.recording,
+          recordingDuration: Duration(milliseconds: 200),
         ),
       ],
     );
@@ -121,10 +124,12 @@ void main() {
       ),
       act: (bloc) => bloc.add(SendRecordedAudio()),
       expect: () => [
-        const AssistantState(
-          clientStatus: ClientStatus.ready,
-          userInput: UserInputState.idle,
-        ),
+        isA<AssistantState>()
+            .having((s) => s.clientStatus, 'clientStatus', ClientStatus.ready)
+            .having((s) => s.userInput, 'userInput', UserInputState.idle)
+            .having((s) => s.recordedAudio, 'recordedAudio', null)
+            .having(
+                (s) => s.recordingDuration, 'recordingDuration', Duration.zero),
       ],
       verify: (_) {
         verify(() => client.sendUserMessageContent(any())).called(1);

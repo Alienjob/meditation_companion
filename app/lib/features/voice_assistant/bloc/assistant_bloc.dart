@@ -43,6 +43,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<ResponseAudioReceived>(_onResponseAudioReceived);
     on<InterruptResponse>(_onInterruptResponse);
     on<ResponseCompleted>(_onResponseCompleted);
+    on<UpdateRecordingDuration>(_onUpdateRecordingDuration);
   }
 
   void _onClientConnected(
@@ -58,7 +59,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   ) {
     emit(state.copyWith(
       clientStatus: ClientStatus.error,
-      lastError: event.error,
+      lastError: () => event.error,
     ));
   }
 
@@ -78,20 +79,13 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       _recordingTimer = Timer.periodic(
         const Duration(milliseconds: 100),
         (timer) {
-          final newDuration =
-              state.recordingDuration + const Duration(milliseconds: 100);
-
-          if (newDuration >= AssistantState.maxRecordingDuration) {
-            add(StopRecordingUserAudioInput());
-          } else {
-            emit(state.copyWith(recordingDuration: newDuration));
-          }
+          add(const UpdateRecordingDuration());
         },
       );
     } catch (e) {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
-        lastError: e.toString(),
+        lastError: () => e.toString(),
       ));
     }
   }
@@ -109,13 +103,30 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       final audioData = await _recorder.stopRecording();
       emit(state.copyWith(
         userInput: UserInputState.recorded,
-        recordedAudio: audioData,
+        recordedAudio: () => audioData,
       ));
     } catch (e) {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
-        lastError: e.toString(),
+        lastError: () => e.toString(),
       ));
+    }
+  }
+
+  void _onUpdateRecordingDuration(
+    UpdateRecordingDuration event,
+    Emitter<AssistantState> emit,
+  ) {
+    // Only update if still recording
+    if (state.userInput != UserInputState.recording) return;
+
+    final newDuration =
+        state.recordingDuration + const Duration(milliseconds: 100);
+
+    if (newDuration >= AssistantState.maxRecordingDuration) {
+      add(StopRecordingUserAudioInput());
+    } else {
+      emit(state.copyWith(recordingDuration: newDuration));
     }
   }
 
@@ -140,18 +151,18 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       final base64Audio = base64Encode(state.recordedAudio!);
 
       await _client.sendUserMessageContent([
-        ContentPart.inputAudio(audio: base64Audio),
+        ContentPart.inputAudio(audio: base64Audio), // Keep the base64 encoding
       ]);
 
       emit(state.copyWith(
         userInput: UserInputState.idle,
-        recordedAudio: null,
+        recordedAudio: () => null,
         recordingDuration: Duration.zero,
       ));
     } catch (e) {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
-        lastError: e.toString(),
+        lastError: () => e.toString(),
       ));
     }
   }

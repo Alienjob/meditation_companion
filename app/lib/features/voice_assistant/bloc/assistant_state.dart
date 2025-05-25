@@ -40,17 +40,18 @@ class AssistantState extends Equatable {
     ClientStatus? clientStatus,
     UserInputState? userInput,
     ResponseState? responseState,
-    Uint8List? recordedAudio,
+    Uint8List? Function()? recordedAudio,
     Duration? recordingDuration,
-    String? lastError,
+    String? Function()? lastError,
   }) {
     return AssistantState(
       clientStatus: clientStatus ?? this.clientStatus,
       userInput: userInput ?? this.userInput,
       responseState: responseState ?? this.responseState,
-      recordedAudio: recordedAudio ?? this.recordedAudio,
+      recordedAudio:
+          recordedAudio != null ? recordedAudio() : this.recordedAudio,
       recordingDuration: recordingDuration ?? this.recordingDuration,
-      lastError: lastError ?? this.lastError,
+      lastError: lastError != null ? lastError() : this.lastError,
     );
   }
 
