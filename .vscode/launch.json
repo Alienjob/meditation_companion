@@ -37,6 +37,17 @@
                 "default": "",
                 "keyRemember": "SupabaseAnonKey"
             }
+        },
+        {
+            "id": "openApiKey",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/secrets/secrets.json",
+                "json": "content.openApiKey",
+                "default": "",
+                "keyRemember": "OpenApiKey"
+            }
         }
     ]
 }
