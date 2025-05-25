@@ -6,13 +6,14 @@ import 'package:mocktail/mocktail.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_bloc.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_event.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_state.dart';
-import 'package:meditation_companion/features/chat/models/chat_message.dart';
 import 'package:meditation_companion/features/chat/repository/chat_repository.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_bloc.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_state.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_event.dart';
 import 'package:meditation_companion/features/voice_assistant/voice_assistant_widget.dart';
+
+import 'package:openai_realtime_dart/openai_realtime_dart.dart'; // Add this import
 
 class MockChatBloc extends MockBloc<ChatEvent, ChatState> implements ChatBloc {
   MockChatBloc() {
@@ -33,6 +34,10 @@ void main() {
   late MockAudioService audioService;
   late MockChatRepository chatRepository;
 
+  setUpAll(() {
+    registerFallbackValue(const ContentPart.inputText(text: 'test'));
+  });
+
   setUp(() {
     chatBloc = MockChatBloc();
     assistantBloc = MockAssistantBloc();
@@ -42,7 +47,6 @@ void main() {
     // Default stream states
     when(() => audioService.voiceStreamState)
         .thenAnswer((_) => Stream.value(VoiceStreamState.idle));
-    when(() => assistantBloc.state).thenReturn(const AssistantState());
   });
 
   Widget createWidgetUnderTest() {
@@ -65,90 +69,185 @@ void main() {
 
   group('VoiceAssistantWidget', () {
     testWidgets('shows mic button when idle', (tester) async {
+      const idleState = AssistantState();
+
+      whenListen(
+        assistantBloc,
+        Stream.value(idleState),
+        initialState: idleState,
+      );
+
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
 
-      expect(find.byIcon(Icons.mic), findsOneWidget);
-      expect(find.byIcon(Icons.stop), findsNothing);
-      expect(find.byIcon(Icons.send), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.interruptButtonKey), findsNothing);
     });
 
     testWidgets('shows stop button when recording', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+      const recordingState = AssistantState(
         clientStatus: ClientStatus.ready,
         userInput: UserInputState.recording,
-      ));
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(recordingState),
+        initialState: recordingState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
 
-      expect(find.byIcon(Icons.stop), findsOneWidget);
-      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.interruptButtonKey), findsNothing);
     });
 
     testWidgets('shows send and delete buttons when recorded', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+      const recordedState = AssistantState(
         clientStatus: ClientStatus.ready,
         userInput: UserInputState.recorded,
-      ));
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(recordedState),
+        initialState: recordedState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
 
-      expect(find.byIcon(Icons.send), findsOneWidget);
-      expect(find.byIcon(Icons.delete), findsOneWidget);
-      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.interruptButtonKey), findsNothing);
     });
 
     testWidgets('shows interrupt button when responding', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+      const respondingState = AssistantState(
         clientStatus: ClientStatus.ready,
         responseState: ResponseState.responding,
-      ));
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(respondingState),
+        initialState: respondingState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
 
-      expect(find.text('Interrupt'), findsOneWidget);
-      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(
+          find.byKey(VoiceAssistantWidget.interruptButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsNothing);
     });
 
     testWidgets('handles mic button tap', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+      const idleState = AssistantState(
         clientStatus: ClientStatus.ready,
-      ));
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(idleState),
+        initialState: idleState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.mic));
+      await tester.tap(find.byKey(VoiceAssistantWidget.micButtonKey));
       await tester.pump();
 
       verify(() => assistantBloc.add(StartRecordingUserAudioInput())).called(1);
     });
 
     testWidgets('handles stop recording tap', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+      const recordingState = AssistantState(
         clientStatus: ClientStatus.ready,
         userInput: UserInputState.recording,
-      ));
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(recordingState),
+        initialState: recordingState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.stop));
+      await tester.tap(find.byKey(VoiceAssistantWidget.stopButtonKey));
       await tester.pump();
 
       verify(() => assistantBloc.add(StopRecordingUserAudioInput())).called(1);
     });
 
-    testWidgets('handles interrupt tap', (tester) async {
-      when(() => assistantBloc.state).thenReturn(const AssistantState(
+    testWidgets('handles send button tap', (tester) async {
+      const recordedState = AssistantState(
         clientStatus: ClientStatus.ready,
-        responseState: ResponseState.responding,
-      ));
+        userInput: UserInputState.recorded,
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(recordedState),
+        initialState: recordedState,
+      );
 
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pump();
-      await tester.tap(find.text('Interrupt'));
+      await tester.tap(find.byKey(VoiceAssistantWidget.sendButtonKey));
+      await tester.pump();
+
+      verify(() => assistantBloc.add(SendRecordedAudio())).called(1);
+    });
+
+    testWidgets('handles delete button tap', (tester) async {
+      const recordedState = AssistantState(
+        clientStatus: ClientStatus.ready,
+        userInput: UserInputState.recorded,
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(recordedState),
+        initialState: recordedState,
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.tap(find.byKey(VoiceAssistantWidget.deleteButtonKey));
+      await tester.pump();
+
+      verify(() => assistantBloc.add(ClearRecordedAudio())).called(1);
+    });
+
+    testWidgets('handles interrupt tap', (tester) async {
+      const respondingState = AssistantState(
+        clientStatus: ClientStatus.ready,
+        responseState: ResponseState.responding,
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(respondingState),
+        initialState: respondingState,
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+      await tester.tap(find.byKey(VoiceAssistantWidget.interruptButtonKey));
       await tester.pump();
 
       verify(() => assistantBloc.add(InterruptResponse())).called(1);
