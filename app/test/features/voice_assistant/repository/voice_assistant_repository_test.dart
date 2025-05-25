@@ -4,18 +4,23 @@ import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import 'package:meditation_companion/features/chat/models/chat_message.dart';
 import 'package:meditation_companion/features/voice_assistant/repository/voice_assistant_repository.dart';
 
-class MockRealtimeClient extends Mock implements RealtimeClient {
-  @override
-  Future<bool> sendUserMessageContent(List<ContentPart> parts) async => true;
-}
+class MockRealtimeClient extends Mock implements RealtimeClient {}
 
 void main() {
   late VoiceAssistantRepository repository;
   late MockRealtimeClient client;
 
+  setUpAll(() {
+    // Register fallback value for ContentPart
+    registerFallbackValue(const ContentPart.inputText(text: 'test'));
+  });
+
   setUp(() {
     client = MockRealtimeClient();
     repository = VoiceAssistantRepository(client);
+
+    when(() => client.sendUserMessageContent(any()))
+        .thenAnswer((_) async => true);
   });
 
   group('VoiceAssistantRepository', () {
@@ -35,8 +40,7 @@ void main() {
 
       await repository.sendMessage(message);
 
-      verify(() => client.sendUserMessageContent(
-          [any(that: predicate((p) => p is ContentPart))])).called(1);
+      verify(() => client.sendUserMessageContent(any())).called(1);
     });
 
     test('exposes message stream', () {

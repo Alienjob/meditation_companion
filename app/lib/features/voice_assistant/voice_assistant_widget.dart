@@ -26,44 +26,7 @@ class VoiceAssistantWidget extends StatelessWidget {
       builder: (context, state) {
         return Column(
           children: [
-            if (state.userInput == UserInputState.idle) ...[
-              IconButton(
-                key: micButtonKey,
-                icon: const Icon(Icons.mic),
-                onPressed: () => context.read<AssistantBloc>().add(
-                      StartRecordingUserAudioInput(),
-                    ),
-              ),
-            ],
-            if (state.userInput == UserInputState.recording) ...[
-              IconButton(
-                key: stopButtonKey,
-                icon: const Icon(Icons.stop),
-                onPressed: () => context.read<AssistantBloc>().add(
-                      StopRecordingUserAudioInput(),
-                    ),
-              ),
-            ],
-            if (state.userInput == UserInputState.recorded) ...[
-              Row(
-                children: [
-                  IconButton(
-                    key: sendButtonKey,
-                    icon: const Icon(Icons.send),
-                    onPressed: () => context.read<AssistantBloc>().add(
-                          SendRecordedAudio(),
-                        ),
-                  ),
-                  IconButton(
-                    key: deleteButtonKey,
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => context.read<AssistantBloc>().add(
-                          ClearRecordedAudio(),
-                        ),
-                  ),
-                ],
-              ),
-            ],
+            // Show interrupt button when responding (takes priority)
             if (state.responseState == ResponseState.responding) ...[
               TextButton(
                 key: interruptButtonKey,
@@ -72,6 +35,47 @@ class VoiceAssistantWidget extends StatelessWidget {
                     ),
                 child: const Text('Interrupt'),
               ),
+            ]
+            // Only show other buttons when NOT responding
+            else ...[
+              if (state.userInput == UserInputState.idle) ...[
+                IconButton(
+                  key: micButtonKey,
+                  icon: const Icon(Icons.mic),
+                  onPressed: () => context.read<AssistantBloc>().add(
+                        StartRecordingUserAudioInput(),
+                      ),
+                ),
+              ],
+              if (state.userInput == UserInputState.recording) ...[
+                IconButton(
+                  key: stopButtonKey,
+                  icon: const Icon(Icons.stop),
+                  onPressed: () => context.read<AssistantBloc>().add(
+                        StopRecordingUserAudioInput(),
+                      ),
+                ),
+              ],
+              if (state.userInput == UserInputState.recorded) ...[
+                Row(
+                  children: [
+                    IconButton(
+                      key: sendButtonKey,
+                      icon: const Icon(Icons.send),
+                      onPressed: () => context.read<AssistantBloc>().add(
+                            SendRecordedAudio(),
+                          ),
+                    ),
+                    IconButton(
+                      key: deleteButtonKey,
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => context.read<AssistantBloc>().add(
+                            ClearRecordedAudio(),
+                          ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ],
         );
