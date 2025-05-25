@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/features/chat/repository/chat_repository.dart';
+import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
 import 'package:meditation_companion/features/meditation/models/meditation_session.dart';
 import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
+import 'package:meditation_companion/features/meditation/services/audio_service.dart';
+import 'package:meditation_companion/features/chat/bloc/chat_bloc.dart';
+import 'package:meditation_companion/features/chat/bloc/chat_event.dart';
+import 'package:meditation_companion/features/chat/views/chat_widget.dart';
+import 'package:meditation_companion/features/voice_assistant/bloc/assistant_bloc.dart';
+import 'package:meditation_companion/features/voice_assistant/repository/voice_assistant_repository.dart';
+import 'package:meditation_companion/features/voice_assistant/services/mock_audio_recorder.dart';
+import 'package:meditation_companion/features/voice_assistant/voice_assistant_widget.dart';
 
 class MeditationSessionScreen extends StatelessWidget {
   const MeditationSessionScreen({super.key});
@@ -16,17 +26,47 @@ class MeditationSessionScreen extends StatelessWidget {
         // Handle any notifications or side effects here
       },
       builder: (context, state) {
+        final isWideScreen = MediaQuery.of(context).size.width > 800;
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('Meditation Session'),
+            actions: [
+              if (!isWideScreen)
+                IconButton(
+                  icon: const Icon(Icons.chat),
+                  onPressed: () => _showChatBottomSheet(context),
+                ),
+            ],
           ),
-          body: _buildBody(context, state),
+          body: isWideScreen
+              ? Row(
+                  children: [
+                    // Main meditation content
+                    Expanded(
+                      flex: 2,
+                      child: _buildMeditationContent(context, state),
+                    ),
+                    // Chat and voice assistant panel
+                    Expanded(
+                      flex: 1,
+                      child: _buildChatPanel(context),
+                    ),
+                  ],
+                )
+              : _buildMeditationContent(context, state),
+          floatingActionButton: !isWideScreen
+              ? FloatingActionButton(
+                  onPressed: () => _showChatBottomSheet(context),
+                  child: const Icon(Icons.chat),
+                )
+              : null,
         );
       },
     );
   }
 
-  Widget _buildBody(BuildContext context, MeditationState state) {
+  Widget _buildMeditationContent(BuildContext context, MeditationState state) {
     if (state is MeditationCompleted) {
       return Center(
         child: Column(
@@ -50,6 +90,135 @@ class MeditationSessionScreen extends StatelessWidget {
     }
 
     return _buildInitialState(context);
+  }
+
+  Widget _buildChatPanel(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: Theme.of(context).dividerColor,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Chat header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              border: Border(
+                bottom: BorderSide(
+                  color: Theme.of(context).dividerColor,
+                ),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.assistant),
+                SizedBox(width: 8),
+                Text(
+                  'Meditation Assistant',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Chat and voice assistant
+          Expanded(
+            child: _buildChatWithVoiceAssistant(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatWithVoiceAssistant(BuildContext context) {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) =>
+              ChatBloc(InMemoryChatRepository())..add(ChatStreamConnected()),
+        ),
+        BlocProvider(
+          create: (context) {
+            final client = RealtimeClient(
+              apiKey: const String.fromEnvironment('OPENAI_API_KEY'),
+            );
+
+            final repository = VoiceAssistantRepository(client);
+            final chatBloc = context.read<ChatBloc>();
+
+            // Подключаем стрим сообщений из голосового помощника к чату
+            repository.getMessageStream().listen((message) {
+              chatBloc.add(ChatMessageReceived(message));
+            });
+
+            return AssistantBloc(
+              chatBloc: chatBloc,
+              audioService: context.read<AudioService>(),
+              recorder: MockAudioRecorder(),
+              client: client,
+            );
+          },
+        ),
+      ],
+      child: const Column(
+        children: [
+          // Chat messages area
+          Expanded(
+            child: ChatWidget(),
+          ),
+          // Voice controls at bottom
+          Padding(
+            padding: EdgeInsets.all(16.0),
+            child: VoiceAssistantWidget(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChatBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(16),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Chat panel content
+              Expanded(
+                child: _buildChatPanel(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildInitialState(BuildContext context) {
