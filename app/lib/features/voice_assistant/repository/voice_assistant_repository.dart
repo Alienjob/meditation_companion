@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../../chat/models/chat_message.dart';
 import '../../chat/repository/chat_repository.dart';
@@ -32,6 +33,8 @@ class VoiceAssistantRepository implements IChatRepository {
   }
 
   void handleConversationUpdated(RealtimeEventConversationUpdated event) {
+    log('OpenAI Realtime Conversation updated: ${event.result}');
+
     final item = event.result.item;
     if (item == null) return;
 
