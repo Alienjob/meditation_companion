@@ -19,8 +19,7 @@ project_root/
 ├── .vscode/
 │   └── launch.json           # Launch configurations referencing secrets
 └── secrets/
-    ├── secrets.json         # Unversioned file with actual values
-    └── secrets.md           # Documentation of required secrets
+    └── secrets.json         # Unversioned file with actual values
 ```
 
 ### 2. Setup Steps
@@ -29,9 +28,12 @@ project_root/
 ```json
 {
   "supabaseUrl": "your-actual-project-url",
-  "supabaseAnonKey": "your-actual-anon-key"
+  "supabaseAnonKey": "your-actual-anon-key",
+  "openApiKey": "your-openai-api-key"
 }
 ```
+
+`openApiKey` powers the voice-assistant integration. Keeping it in the same file lets the launch configuration feed every runtime secret from one place.
 
 2. The launch configuration automatically reads these values:
 ```json
@@ -40,7 +42,8 @@ project_root/
     {
       "args": [
         "--dart-define=SUPABASE_URL=${command:extension.commandvariable.file.content:${workspaceFolder}/secrets/secrets.json:supabaseUrl}",
-        "--dart-define=SUPABASE_ANON_KEY=${command:extension.commandvariable.file.content:${workspaceFolder}/secrets/secrets.json:supabaseAnonKey}"
+        "--dart-define=SUPABASE_ANON_KEY=${command:extension.commandvariable.file.content:${workspaceFolder}/secrets/secrets.json:supabaseAnonKey}",
+        "--dart-define=OPENAI_API_KEY=${command:extension.commandvariable.file.content:${workspaceFolder}/secrets/secrets.json:openApiKey}"
       ]
     }
   ]
@@ -57,6 +60,9 @@ class EnvConfig {
 
   static String get supabaseAnonKey =>
       const String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  static String get openAiKey =>
+      const String.fromEnvironment('OPENAI_API_KEY');
 }
 ```
 
@@ -96,5 +102,5 @@ Common issues:
 Remember: 
 - Keep secrets.json in .gitignore
 - Never commit actual values
-- Document required secrets in secrets.md
+- Keep this doc (or another versioned reference) updated with required keys
 - Each developer maintains their own secrets file

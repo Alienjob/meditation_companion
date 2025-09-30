@@ -7,13 +7,41 @@ import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../../chat/bloc/chat_bloc.dart';
 import '../../chat/bloc/chat_event.dart';
 import '../../chat/models/chat_message.dart';
-import '../../chat/repository/chat_repository.dart';
 import '../../chat/views/chat_widget.dart';
 import '../../voice_assistant/bloc/assistant_bloc.dart';
 import '../../voice_assistant/repository/voice_assistant_repository.dart';
 import '../../voice_assistant/services/mock_audio_recorder.dart';
 import '../../voice_assistant/voice_assistant_widget.dart';
 import '../services/audio_service.dart';
+
+String _clipLogText(String value) {
+  if (value.isEmpty) return '<empty>';
+  const maxLength = 80;
+  return value.length <= maxLength
+      ? value
+      : '${value.substring(0, maxLength)}…';
+}
+
+String _describeContentPart(ContentPart part) {
+  return part.map(
+    inputAudio: (p) => 'inputAudio bytes=${p.audio?.length ?? 0} '
+        'transcriptLen=${p.transcript?.length ?? 0} transcript=${_clipLogText(p.transcript ?? '')}',
+    audio: (p) => 'audio bytes=${p.audio?.length ?? 0} '
+        'transcriptLen=${p.transcript?.length ?? 0} transcript=${_clipLogText(p.transcript ?? '')}',
+    inputText: (p) => 'inputText "${_clipLogText(p.text)}"',
+    text: (p) => 'text "${_clipLogText(p.text)}"',
+  );
+}
+
+String _describeItem(Item item) {
+  return item.map(
+    message: (m) =>
+        'message id=${m.id} role=${m.role.name} parts=${m.content.length}',
+    functionCall: (f) => 'functionCall id=${f.id} name=${f.name}',
+    functionCallOutput: (f) =>
+        'functionCallOutput id=${f.id} bytes=${f.output.length}',
+  );
+}
 
 class ChatAssistantWidget extends StatelessWidget {
   const ChatAssistantWidget({super.key});
@@ -67,17 +95,33 @@ class ChatAssistantWidget extends StatelessWidget {
   }
 
   Widget _buildChatWithVoiceAssistant(BuildContext context) {
-    final chatRepository = InMemoryChatRepository();
-    final chatBloc = ChatBloc(chatRepository);
+    final client = RealtimeClient(
+      apiKey: const String.fromEnvironment('OPENAI_API_KEY'),
+      dangerouslyAllowAPIKeyInBrowser: true,
+    );
+
+    client.updateSession(
+      instructions:
+          'You are a friendly meditation assistant. Help users with meditation and mindfulness.',
+      voice: Voice.alloy,
+      turnDetection: TurnDetection(
+        type: TurnDetectionType.serverVad,
+      ),
+      inputAudioTranscription: InputAudioTranscriptionConfig(
+        model: 'whisper-1',
+      ),
+    );
+
+    final repository = VoiceAssistantRepository(client);
 
     return BlocProvider(
       create: (context) {
+        final chatBloc = ChatBloc(repository);
         chatBloc.add(ChatStreamConnected());
+
         bool welcomeMessageAdded = false;
         chatBloc.stream.listen((state) {
           if (state is ChatConnected && !welcomeMessageAdded) {
-            // Add welcome message only once chat is properly connected
-
             final welcomeMessage = ChatMessage(
               id: 'welcome-${DateTime.now().millisecondsSinceEpoch}',
               content:
@@ -96,61 +140,80 @@ class ChatAssistantWidget extends StatelessWidget {
       child: Builder(
         builder: (context) => BlocProvider(
           create: (context) {
-            final client = RealtimeClient(
-              apiKey: const String.fromEnvironment('OPENAI_API_KEY'),
-              dangerouslyAllowAPIKeyInBrowser: true,
-            );
-
-            // Add this configuration before connecting
-            client.updateSession(
-              instructions:
-                  'You are a friendly meditation assistant. Help users with meditation and mindfulness.',
-              voice: Voice.alloy, // Use alloy voice for responses
-              turnDetection: TurnDetection(
-                type: TurnDetectionType
-                    .serverVad, // Server-side voice activity detection
-              ),
-              inputAudioTranscription: InputAudioTranscriptionConfig(
-                model: 'whisper-1',
-              ),
-            );
-
-            final repository = VoiceAssistantRepository(client);
             final chatBloc = context.read<ChatBloc>();
 
-            // client.on(RealtimeEventType.all, (event) {
-            //   log('Received OpenAI event: ${event.runtimeType}');
+            client.on(RealtimeEventType.all, (event) {
+              log('Received OpenAI event: ${event.type}');
+            });
 
-            // });
-
-            // Подключаем обработчики
             client.on(RealtimeEventType.conversationUpdated, (event) {
-              log('OpenAI Realtime Conversation updated: ${(event as RealtimeEventConversationUpdated).result}');
               repository.handleConversationUpdated(
-                  event as RealtimeEventConversationUpdated);
+                event as RealtimeEventConversationUpdated,
+              );
             });
 
             client.on(RealtimeEventType.conversationItemAppended, (event) {
-              log('OpenAI Realtime Conversation item appended: ${(event as RealtimeEventConversationItemAppended).item}');
               repository.handleConversationItemAppended(
-                  event as RealtimeEventConversationItemAppended);
+                event as RealtimeEventConversationItemAppended,
+              );
             });
 
             client.on(RealtimeEventType.conversationItemCompleted, (event) {
-              log('OpenAI Realtime Conversation item completed: ${(event as RealtimeEventConversationItemCompleted).item}');
               repository.handleConversationItemCompleted(
-                  event as RealtimeEventConversationItemCompleted);
+                event as RealtimeEventConversationItemCompleted,
+              );
+            });
+
+            client.on(RealtimeEventType.responseOutputItemAdded, (event) {
+              final typedEvent = event as RealtimeEventResponseOutputItemAdded;
+              log(
+                'OpenAI response output item added: '
+                '${_describeItem(typedEvent.item)} '
+                'response=${typedEvent.responseId} '
+                'outputIndex=${typedEvent.outputIndex}',
+              );
+            });
+
+            client.on(RealtimeEventType.responseContentPartAdded, (event) {
+              final typedEvent = event as RealtimeEventResponseContentPartAdded;
+              log(
+                'OpenAI response content part added: '
+                '${_describeContentPart(typedEvent.part)} '
+                'response=${typedEvent.responseId} '
+                'item=${typedEvent.itemId}',
+              );
+            });
+
+            client.on(RealtimeEventType.responseTextDelta, (event) {
+              final typedEvent = event as RealtimeEventResponseTextDelta;
+              repository.handleResponseTextDelta(typedEvent);
+              log(
+                'OpenAI response text delta: '
+                'item=${typedEvent.itemId} deltaLen=${typedEvent.delta.length}',
+              );
+            });
+
+            client.on(RealtimeEventType.responseTextDone, (event) {
+              final typedEvent = event as RealtimeEventResponseTextDone;
+              repository.handleResponseTextDone(typedEvent);
+              log(
+                'OpenAI response text done: '
+                'item=${typedEvent.itemId} textLen=${typedEvent.text.length}',
+              );
             });
 
             client.on(RealtimeEventType.error, (event) {
-              log('OpenAI Realtime error: ${(event as RealtimeEventError).error}');
-              // Attempt to reconnect
-              // client.connect();
+              final typedEvent = event as RealtimeEventError;
+              log('OpenAI Realtime error: ${typedEvent.error}');
             });
 
-            // Подключаем стрим
-            repository.getMessageStream().listen((message) {
-              chatBloc.add(ChatMessageReceived(message));
+            client.on(RealtimeEventType.close, (event) {
+              log('OpenAI Realtime closed, attempting to reconnect...');
+              Future.delayed(const Duration(seconds: 1), () {
+                if (!client.isConnected()) {
+                  client.connect();
+                }
+              });
             });
 
             final assistantBloc = AssistantBloc(
@@ -160,17 +223,6 @@ class ChatAssistantWidget extends StatelessWidget {
               client: client,
             );
 
-            client.on(RealtimeEventType.close, (event) {
-              log('OpenAI Realtime closed, attempting to reconnect...');
-              // Attempt to reconnect with a small delay
-              Future.delayed(const Duration(seconds: 1), () {
-                if (!client.isConnected()) {
-                  client.connect();
-                }
-              });
-            });
-
-            // Initial connect
             client.connect().then((_) {
               log('Connected to OpenAI Realtime: ${client.isConnected()}');
               assistantBloc.add(ClientConnected());

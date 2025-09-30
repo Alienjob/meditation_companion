@@ -70,6 +70,11 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.isUser;
     final colorScheme = Theme.of(context).colorScheme;
+    final displayText = switch (message.status) {
+      MessageStatus.streaming || MessageStatus.pending =>
+          message.content.isEmpty ? '…' : '${message.content} …',
+      MessageStatus.completed => message.content,
+    };
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -91,7 +96,7 @@ class _MessageBubble extends StatelessWidget {
           ],
         ),
         child: Text(
-          message.content,
+          displayText,
           style: TextStyle(
             color: isUser ? colorScheme.onPrimary : colorScheme.onSurface,
           ),

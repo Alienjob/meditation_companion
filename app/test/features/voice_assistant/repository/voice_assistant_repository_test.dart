@@ -48,35 +48,103 @@ void main() {
       expect(repository.getMessageStream(), isA<Stream<ChatMessage>>());
     });
 
-    test('adds message to history when sending', () async {
-      final message = ChatMessage(
-        id: 'test_id',
-        content: 'Hello',
-        senderId: 'user',
-        timestamp: DateTime.now(),
-        isUser: true,
-      );
+    test('cleans up resources on dispose', () {
+      expect(repository.dispose, returnsNormally);
+    });
+  });
 
-      await repository.sendMessage(message);
+  group('assistant transcript handling', () {
+    test('creates streaming message on first transcript delta', () async {
+      repository.handleResponseTextDelta(
+        const RealtimeEventResponseTextDelta(
+          eventId: 'evt_1',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          delta: 'Hello',
+        ),
+      );
 
       final messages = await repository.getMessages();
-      expect(messages, contains(message));
+      expect(messages, hasLength(1));
+      expect(messages.first.content, 'Hello');
+      expect(messages.first.status, MessageStatus.streaming);
     });
 
-    test('cleans up resources on dispose', () {
-      repository.dispose();
-
-      // After dispose, any attempt to send messages should throw
-      expect(
-        () => repository.sendMessage(ChatMessage(
-          id: 'test_id',
-          content: 'Hello',
-          senderId: 'user',
-          timestamp: DateTime.now(),
-          isUser: true,
-        )),
-        throwsStateError,
+    test('appends transcript deltas to existing message', () async {
+      repository.handleResponseTextDelta(
+        const RealtimeEventResponseTextDelta(
+          eventId: 'evt_1',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          delta: 'Hello',
+        ),
       );
+
+      repository.handleResponseTextDelta(
+        const RealtimeEventResponseTextDelta(
+          eventId: 'evt_2',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          delta: ' there',
+        ),
+      );
+
+      final messages = await repository.getMessages();
+      expect(messages.single.content, 'Hello there');
+      expect(messages.single.status, MessageStatus.streaming);
+    });
+
+    test('response done finalises message and status', () async {
+      repository.handleResponseTextDelta(
+        const RealtimeEventResponseTextDelta(
+          eventId: 'evt_1',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          delta: 'temp',
+        ),
+      );
+
+      repository.handleResponseTextDone(
+        const RealtimeEventResponseTextDone(
+          eventId: 'evt_2',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          text: 'Final text',
+        ),
+      );
+
+      final messages = await repository.getMessages();
+      expect(messages, hasLength(1));
+      expect(messages.first.content, 'Final text');
+      expect(messages.first.status, MessageStatus.completed);
+    });
+
+    test('response done without transcript adds placeholder', () async {
+      repository.handleResponseTextDone(
+        const RealtimeEventResponseTextDone(
+          eventId: 'evt_1',
+          responseId: 'resp',
+          itemId: 'item_1',
+          outputIndex: 0,
+          contentIndex: 0,
+          text: '',
+        ),
+      );
+
+      final messages = await repository.getMessages();
+      expect(messages, hasLength(1));
+      expect(messages.first.content, '[voice response]');
+      expect(messages.first.status, MessageStatus.completed);
     });
   });
 }

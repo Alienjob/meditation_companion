@@ -36,8 +36,8 @@ app/
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  mockito: ^5.4.4
-  test: ^1.24.9
+  mocktail: ^1.0.4
+  test: ^1.25.8
 ```
 
 ## 3. Testing Approach
