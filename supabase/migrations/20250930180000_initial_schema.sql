@@ -1,0 +1,128 @@
+-- Initial schema for meditation companion
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Sessions table to track app usage sessions
+CREATE TABLE IF NOT EXISTS app_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE,
+    device_info TEXT NOT NULL,
+    app_version TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes if they don't exist
+CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id ON app_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_sessions_start_time ON app_sessions(start_time);
+
+-- Events table to store analytics events
+CREATE TABLE IF NOT EXISTS events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES app_sessions(id),
+    user_id UUID NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    event_type TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add constraint if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'valid_event_type' 
+        AND table_name = 'events'
+    ) THEN
+        ALTER TABLE events ADD CONSTRAINT valid_event_type CHECK (
+            event_type IN (
+                'meditation.session.start',
+                'meditation.session.complete',
+                'audio.volume.change',
+                'audio.sound.toggle',
+                'ui.screen.view',
+                'ui.button.click'
+            )
+        );
+    END IF;
+END $$;
+
+-- Create indexes if they don't exist
+CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id);
+CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+
+-- Event parameters table to store flexible key-value pairs
+CREATE TABLE IF NOT EXISTS event_parameters (
+    id BIGSERIAL PRIMARY KEY,
+    event_id UUID NOT NULL REFERENCES events(id),
+    param_name TEXT NOT NULL,
+    param_value TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes if they don't exist
+CREATE INDEX IF NOT EXISTS idx_event_parameters_event_id ON event_parameters(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_parameters_name ON event_parameters(param_name);
+
+-- Enable RLS on all tables
+ALTER TABLE app_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_parameters ENABLE ROW LEVEL SECURITY;
+
+-- Sessions policies
+DROP POLICY IF EXISTS "Sessions are viewable by user" ON app_sessions;
+DROP POLICY IF EXISTS "Sessions are insertable" ON app_sessions;
+DROP POLICY IF EXISTS "Sessions are updatable by user" ON app_sessions;
+
+CREATE POLICY "Sessions are viewable by user" ON app_sessions
+    FOR SELECT
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
+
+CREATE POLICY "Sessions are insertable" ON app_sessions
+    FOR INSERT
+    WITH CHECK (true);
+
+CREATE POLICY "Sessions are updatable by user" ON app_sessions
+    FOR UPDATE
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
+
+-- Events policies
+DROP POLICY IF EXISTS "Events are viewable by user" ON events;
+DROP POLICY IF EXISTS "Events are insertable" ON events;
+
+CREATE POLICY "Events are viewable by user" ON events
+    FOR SELECT
+    USING (auth.uid() = user_id OR user_id IN (
+        SELECT user_id FROM app_sessions WHERE end_time IS NULL
+    ));
+
+CREATE POLICY "Events are insertable" ON events
+    FOR INSERT
+    WITH CHECK (true);
+
+-- Event parameters policies
+DROP POLICY IF EXISTS "Parameters are viewable by event owner" ON event_parameters;
+DROP POLICY IF EXISTS "Parameters are insertable" ON event_parameters;
+
+CREATE POLICY "Parameters are viewable by event owner" ON event_parameters
+    FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM events
+            WHERE events.id = event_parameters.event_id
+            AND (events.user_id = auth.uid() OR events.user_id IN (
+                SELECT user_id FROM app_sessions WHERE end_time IS NULL
+            ))
+        )
+    );
+
+CREATE POLICY "Parameters are insertable" ON event_parameters
+    FOR INSERT
+    WITH CHECK (true);

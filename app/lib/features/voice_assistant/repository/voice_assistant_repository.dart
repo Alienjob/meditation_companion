@@ -27,6 +27,8 @@ class VoiceAssistantRepository implements IChatRepository {
     _messages.add(message);
     _messagesController.add(message);
 
+    log('VoiceAssistantRepository - Sending message, client connected: ${_client.isConnected()}');
+
     await _client.sendUserMessageContent([
       ContentPart.inputText(text: message.content),
     ]);
@@ -67,10 +69,12 @@ class VoiceAssistantRepository implements IChatRepository {
         _inProgressMessages[messageId] = chatMessage;
         _messages.add(chatMessage);
         _messagesController.add(chatMessage);
-      } else if (delta?.transcript != null) {
+      } else if (delta?.transcript != null || delta?.text != null) {
         final existingMessage = _inProgressMessages[messageId]!;
         final updatedMessage = existingMessage.copyWith(
-          content: existingMessage.content + delta!.transcript!,
+          content: existingMessage.content +
+              (delta?.transcript ?? '') +
+              (delta?.text ?? ''),
         );
         _inProgressMessages[messageId] = updatedMessage;
 
@@ -86,6 +90,7 @@ class VoiceAssistantRepository implements IChatRepository {
 
   void handleConversationItemAppended(
       RealtimeEventConversationItemAppended event) {
+    log('OpenAI Realtime Conversation item appended: ${event.item}');
     final item = event.item;
     if (item.item case final ItemMessage message) {
       final isUser = message.role == ItemRole.user;
@@ -122,6 +127,7 @@ class VoiceAssistantRepository implements IChatRepository {
 
   void handleConversationItemCompleted(
       RealtimeEventConversationItemCompleted event) {
+    log('OpenAI Realtime Conversation item completed: ${event.item}');
     final item = event.item;
     if (item.item case final ItemMessage message) {
       _inProgressMessages.remove(item.item.id);
@@ -129,6 +135,7 @@ class VoiceAssistantRepository implements IChatRepository {
   }
 
   void dispose() {
+    log('VoiceAssistantRepository - Disposing resources');
     _messagesController.close();
   }
 }

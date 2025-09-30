@@ -38,7 +38,8 @@ class VoiceAssistantWidget extends StatelessWidget {
             ]
             // Only show other buttons when NOT responding
             else ...[
-              if (state.userInput == UserInputState.idle) ...[
+              if (state.userInput == UserInputState.idle &&
+                  state.canRecord) ...[
                 IconButton(
                   key: micButtonKey,
                   icon: const Icon(Icons.mic),
@@ -46,6 +47,10 @@ class VoiceAssistantWidget extends StatelessWidget {
                         StartRecordingUserAudioInput(),
                       ),
                 ),
+              ],
+              if (state.userInput == UserInputState.idle &&
+                  !state.canRecord) ...[
+                CircularProgressIndicator(),
               ],
               if (state.userInput == UserInputState.recording) ...[
                 IconButton(

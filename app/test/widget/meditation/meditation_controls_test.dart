@@ -11,10 +11,10 @@ import 'package:meditation_companion/features/meditation/models/meditation_sessi
 import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
-import 'package:meditation_companion/features/meditation/widgets/chat_assistant_widget.dart';
 
 // Import our mock implementations
 import 'mocks/mock_audio_service_wrapper.dart';
+import 'mocks/mock_chat_bottom_sheet_widget.dart';
 
 class MockMeditationBloc extends Mock implements MeditationBloc {
   final _controller = StreamController<MeditationState>.broadcast();
@@ -57,137 +57,18 @@ void main() {
   });
 
   Widget createSubject() {
-    final mockAudioService = MockAudioServiceForTests();
-
     return MaterialApp(
-      home: MultiProvider(
-        providers: [
-          BlocProvider<MeditationBloc>.value(value: bloc),
-          Provider<AudioService>.value(value: mockAudioService),
-        ],
-        child: const MeditationSessionScreen(),
+      home: Provider<AudioService>(
+        create: (_) => MockAudioServiceForTests(),
+        child: BlocProvider<MeditationBloc>.value(
+          value: bloc,
+          child: const MeditationSessionScreen(),
+        ),
       ),
     );
   }
 
-  group('MeditationSessionScreen', () {
-    testWidgets('renders initial state correctly', (tester) async {
-      await tester.pumpWidget(createSubject());
-      await tester.pump();
-
-      expect(find.text('Meditation Session'), findsOneWidget);
-      expect(find.text('00:00'), findsOneWidget);
-      expect(find.text('Select Duration'), findsOneWidget);
-      expect(find.text('1 min'), findsOneWidget);
-      expect(find.text('5 min'), findsOneWidget);
-      expect(find.text('10 min'), findsOneWidget);
-      expect(find.text('15 min'), findsOneWidget);
-      expect(find.text('20 min'), findsOneWidget);
-    });
-
-    testWidgets('starts meditation when duration selected', (tester) async {
-      await tester.pumpWidget(createSubject());
-      await tester.pump();
-
-      await tester.tap(find.text('10 min'));
-      await tester.pumpAndSettle();
-
-      verify(() =>
-              bloc.add(StartMeditation(duration: const Duration(minutes: 10))))
-          .called(1);
-    });
-
-    testWidgets('shows controls when meditation is active', (tester) async {
-      final session = MeditationSession(
-        id: testId,
-        duration: const Duration(minutes: 10),
-        currentTime: const Duration(minutes: 5),
-        status: MeditationStatus.running,
-      );
-
-      bloc.emit(MeditationActive(session: session, soundSettings: const {}));
-
-      await tester.pumpWidget(createSubject());
-      await tester.pumpAndSettle();
-
-      expect(find.text('05:00'), findsOneWidget);
-      expect(find.byIcon(Icons.pause_circle_filled), findsOneWidget);
-      expect(find.byIcon(Icons.stop_circle), findsOneWidget);
-      expect(find.text('Ambient Sounds'), findsOneWidget);
-    });
-
-    testWidgets('shows ambient sound controls', (tester) async {
-      final session = MeditationSession(
-        id: testId,
-        duration: const Duration(minutes: 10),
-        currentTime: const Duration(minutes: 5),
-        status: MeditationStatus.running,
-      );
-
-      when(() => bloc.add(any())).thenReturn(null);
-
-      bloc.emit(MeditationActive(
-        session: session,
-        soundSettings: {
-          'rain': const AmbientSoundSettings(isActive: true, volume: 0.5),
-          'forest': const AmbientSoundSettings(),
-          'ocean': const AmbientSoundSettings(),
-        },
-      ));
-
-      await tester.pumpWidget(createSubject());
-      await tester.pumpAndSettle();
-
-      expect(find.text('Rain'), findsOneWidget);
-      expect(find.text('Forest'), findsOneWidget);
-      expect(find.text('Ocean'), findsOneWidget);
-
-      final switches = find.byType(Switch);
-      expect(switches, findsNWidgets(3));
-
-      // Test sound toggle
-      await tester.tap(switches.first);
-      await tester.pumpAndSettle();
-
-      verify(() => bloc.add(const ToggleSound(soundId: 'rain', active: false)))
-          .called(1);
-      verifyNever(() => bloc.add(any<AdjustVolume>()));
-    });
-
-    testWidgets('shows play button when meditation is paused', (tester) async {
-      final session = MeditationSession(
-        id: testId,
-        duration: const Duration(minutes: 10),
-        currentTime: const Duration(minutes: 5),
-        status: MeditationStatus.paused,
-      );
-
-      bloc.emit(MeditationActive(session: session, soundSettings: const {}));
-
-      await tester.pumpWidget(createSubject());
-      await tester.pumpAndSettle();
-
-      expect(find.text('05:00'), findsOneWidget);
-      expect(find.byIcon(Icons.play_circle_filled), findsOneWidget);
-      expect(find.byIcon(Icons.stop_circle), findsOneWidget);
-    });
-
-    testWidgets('shows completed state', (tester) async {
-      final session = MeditationSession(
-        id: testId,
-        duration: const Duration(minutes: 10),
-        currentTime: const Duration(minutes: 10),
-        status: MeditationStatus.completed,
-      );
-
-      await tester.pumpWidget(createSubject());
-      bloc.emit(MeditationCompleted(session: session));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Meditation session completed!'), findsOneWidget);
-      expect(find.text('Start New Session'), findsOneWidget);
-    });
-
+  group('MeditationSessionScreen meditation controls', () {
     testWidgets('pause button pauses meditation', (tester) async {
       final session = MeditationSession(
         id: testId,

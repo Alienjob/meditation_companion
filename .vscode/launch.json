@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "meditation_companion (chrome)",
+            "name": "meditation_companion (remote - chrome)",
             "cwd": "app",
             "request": "launch",
             "type": "dart",
@@ -12,6 +12,41 @@
                 "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
                 "-d",
                 "chrome",
+            ],
+        },
+        {
+            "name": "meditation_companion (local - chrome)",
+            "cwd": "app",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define=SUPABASE_URL=${input:localSupabaseUrl}",
+                "--dart-define=SUPABASE_ANON_KEY=${input:localSupabaseAnonKey}",
+                "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
+                "-d",
+                "chrome",
+            ],
+        },
+        {
+            "name": "meditation_companion (remote - mobile)",
+            "cwd": "app",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
+                "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
+                "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
+            ],
+        },
+        {
+            "name": "meditation_companion (local - mobile)",
+            "cwd": "app",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define=SUPABASE_URL=${input:localSupabaseUrl}",
+                "--dart-define=SUPABASE_ANON_KEY=${input:localSupabaseAnonKey}",
+                "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
             ],
         }
     ],
@@ -24,7 +59,7 @@
                 "fileName": "${workspaceFolder}/secrets/secrets.json",
                 "json": "content.supabaseUrl",
                 "default": "",
-                "keyRemember": "SupabaseUrl"
+                "keyRemember": "RemoteSupabaseUrl"
             }
         },
         {
@@ -35,7 +70,27 @@
                 "fileName": "${workspaceFolder}/secrets/secrets.json",
                 "json": "content.supabaseAnonKey",
                 "default": "",
-                "keyRemember": "SupabaseAnonKey"
+                "keyRemember": "RemoteSupabaseAnonKey"
+            }
+        },
+        {
+            "id": "localSupabaseUrl",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/secrets/secrets.json",
+                "json": "content.localSupabaseUrl",
+                "keyRemember": "LocalSupabaseUrl"
+            }
+        },
+        {
+            "id": "localSupabaseAnonKey",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/secrets/secrets.json",
+                "json": "content.localSupabaseAnonKey",
+                "keyRemember": "LocalSupabaseAnonKey"
             }
         },
         {

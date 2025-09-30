@@ -1,6 +1,8 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/features/chat/bloc/chat_state.dart';
+import 'package:meditation_companion/features/voice_assistant/bloc/assistant_event.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../../chat/bloc/chat_bloc.dart';
 import '../../chat/bloc/chat_event.dart';
@@ -65,10 +67,30 @@ class ChatAssistantWidget extends StatelessWidget {
   }
 
   Widget _buildChatWithVoiceAssistant(BuildContext context) {
+    final chatRepository = InMemoryChatRepository();
+    final chatBloc = ChatBloc(chatRepository);
+
     return BlocProvider(
       create: (context) {
-        final chatBloc = ChatBloc(InMemoryChatRepository());
         chatBloc.add(ChatStreamConnected());
+        bool welcomeMessageAdded = false;
+        chatBloc.stream.listen((state) {
+          if (state is ChatConnected && !welcomeMessageAdded) {
+            // Add welcome message only once chat is properly connected
+
+            final welcomeMessage = ChatMessage(
+              id: 'welcome-${DateTime.now().millisecondsSinceEpoch}',
+              content:
+                  'Hello! I\'m your meditation assistant. Press the mic button to start talking.',
+              senderId: 'assistant',
+              timestamp: DateTime.now(),
+              isUser: false,
+            );
+            chatBloc.add(ChatMessageReceived(welcomeMessage));
+            welcomeMessageAdded = true;
+          }
+        });
+
         return chatBloc;
       },
       child: Builder(
@@ -76,25 +98,54 @@ class ChatAssistantWidget extends StatelessWidget {
           create: (context) {
             final client = RealtimeClient(
               apiKey: const String.fromEnvironment('OPENAI_API_KEY'),
+              dangerouslyAllowAPIKeyInBrowser: true,
+            );
+
+            // Add this configuration before connecting
+            client.updateSession(
+              instructions:
+                  'You are a friendly meditation assistant. Help users with meditation and mindfulness.',
+              voice: Voice.alloy, // Use alloy voice for responses
+              turnDetection: TurnDetection(
+                type: TurnDetectionType
+                    .serverVad, // Server-side voice activity detection
+              ),
+              inputAudioTranscription: InputAudioTranscriptionConfig(
+                model: 'whisper-1',
+              ),
             );
 
             final repository = VoiceAssistantRepository(client);
             final chatBloc = context.read<ChatBloc>();
 
+            // client.on(RealtimeEventType.all, (event) {
+            //   log('Received OpenAI event: ${event.runtimeType}');
+
+            // });
+
             // Подключаем обработчики
             client.on(RealtimeEventType.conversationUpdated, (event) {
+              log('OpenAI Realtime Conversation updated: ${(event as RealtimeEventConversationUpdated).result}');
               repository.handleConversationUpdated(
                   event as RealtimeEventConversationUpdated);
             });
 
             client.on(RealtimeEventType.conversationItemAppended, (event) {
+              log('OpenAI Realtime Conversation item appended: ${(event as RealtimeEventConversationItemAppended).item}');
               repository.handleConversationItemAppended(
                   event as RealtimeEventConversationItemAppended);
             });
 
             client.on(RealtimeEventType.conversationItemCompleted, (event) {
+              log('OpenAI Realtime Conversation item completed: ${(event as RealtimeEventConversationItemCompleted).item}');
               repository.handleConversationItemCompleted(
                   event as RealtimeEventConversationItemCompleted);
+            });
+
+            client.on(RealtimeEventType.error, (event) {
+              log('OpenAI Realtime error: ${(event as RealtimeEventError).error}');
+              // Attempt to reconnect
+              // client.connect();
             });
 
             // Подключаем стрим
@@ -102,30 +153,30 @@ class ChatAssistantWidget extends StatelessWidget {
               chatBloc.add(ChatMessageReceived(message));
             });
 
-            // Подключаемся к серверу
-            client.connect().then((_) {
-              log('Connected to OpenAI Realtime: ${client.isConnected()}');
-
-              // Добавляем приветственное сообщение
-              Future.delayed(const Duration(milliseconds: 100), () {
-                final welcomeMessage = ChatMessage(
-                  id: 'welcome-${DateTime.now().millisecondsSinceEpoch}',
-                  content:
-                      'Hello! I\'m your meditation assistant. Press the mic button to start talking.',
-                  senderId: 'assistant',
-                  timestamp: DateTime.now(),
-                  isUser: false,
-                );
-                chatBloc.add(ChatMessageReceived(welcomeMessage));
-              });
-            });
-
-            return AssistantBloc(
+            final assistantBloc = AssistantBloc(
               chatBloc: chatBloc,
               audioService: context.read<AudioService>(),
               recorder: MockAudioRecorder(),
               client: client,
             );
+
+            client.on(RealtimeEventType.close, (event) {
+              log('OpenAI Realtime closed, attempting to reconnect...');
+              // Attempt to reconnect with a small delay
+              Future.delayed(const Duration(seconds: 1), () {
+                if (!client.isConnected()) {
+                  client.connect();
+                }
+              });
+            });
+
+            // Initial connect
+            client.connect().then((_) {
+              log('Connected to OpenAI Realtime: ${client.isConnected()}');
+              assistantBloc.add(ClientConnected());
+            });
+
+            return assistantBloc;
           },
           child: const Column(
             children: [

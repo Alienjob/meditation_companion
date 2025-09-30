@@ -68,8 +68,12 @@ void main() {
   }
 
   group('VoiceAssistantWidget', () {
-    testWidgets('shows mic button when idle', (tester) async {
-      const idleState = AssistantState();
+    testWidgets('shows mic button when idle and ready', (tester) async {
+      const idleState = AssistantState(
+        clientStatus: ClientStatus.ready,
+        userInput: UserInputState.idle,
+        responseState: ResponseState.idle,
+      );
 
       whenListen(
         assistantBloc,
@@ -81,6 +85,30 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsNothing);
+      expect(find.byKey(VoiceAssistantWidget.interruptButtonKey), findsNothing);
+    });
+
+    testWidgets('shows progress indicator when connecting', (tester) async {
+      const connectingState = AssistantState(
+        clientStatus: ClientStatus.connecting,
+        userInput: UserInputState.idle,
+        responseState: ResponseState.idle,
+      );
+
+      whenListen(
+        assistantBloc,
+        Stream.value(connectingState),
+        initialState: connectingState,
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(VoiceAssistantWidget.micButtonKey), findsNothing);
       expect(find.byKey(VoiceAssistantWidget.stopButtonKey), findsNothing);
       expect(find.byKey(VoiceAssistantWidget.sendButtonKey), findsNothing);
       expect(find.byKey(VoiceAssistantWidget.deleteButtonKey), findsNothing);
@@ -157,6 +185,8 @@ void main() {
     testWidgets('handles mic button tap', (tester) async {
       const idleState = AssistantState(
         clientStatus: ClientStatus.ready,
+        userInput: UserInputState.idle,
+        responseState: ResponseState.idle,
       );
 
       whenListen(

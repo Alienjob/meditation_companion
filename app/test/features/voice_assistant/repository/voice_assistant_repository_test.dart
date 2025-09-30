@@ -21,6 +21,7 @@ void main() {
 
     when(() => client.sendUserMessageContent(any()))
         .thenAnswer((_) async => true);
+    when(() => client.isConnected()).thenReturn(true);
   });
 
   group('VoiceAssistantRepository', () {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:typed_data';
 import 'package:bloc/bloc.dart';
 import 'package:flutter/foundation.dart';
@@ -145,6 +146,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     SendRecordedAudio event,
     Emitter<AssistantState> emit,
   ) async {
+    log('Sending recorded audio: ${state.recordedAudio?.length} bytes');
     if (!state.canSendRecording) return;
 
     try {
