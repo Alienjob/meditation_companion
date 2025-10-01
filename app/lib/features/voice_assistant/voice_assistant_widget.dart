@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:openai_realtime_dart/openai_realtime_dart.dart';
-import '../meditation/services/audio_service.dart';
-import '../chat/bloc/chat_bloc.dart';
-import '../chat/repository/chat_repository.dart';
-import '../chat/views/chat_widget.dart';
 import './bloc/assistant_bloc.dart';
 import './bloc/assistant_event.dart';
 import './bloc/assistant_state.dart';
-import './services/mock_audio_recorder.dart';
 
 class VoiceAssistantWidget extends StatelessWidget {
   const VoiceAssistantWidget({super.key});

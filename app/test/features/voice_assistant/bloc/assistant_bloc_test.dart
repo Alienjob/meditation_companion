@@ -38,6 +38,9 @@ void main() {
     // Default stub for stream methods
     when(() => audioService.voiceStreamState)
         .thenAnswer((_) => Stream.value(VoiceStreamState.idle));
+    when(() => audioService.appendVoiceChunk(any(), any()))
+        .thenAnswer((_) async {});
+    when(() => audioService.stopVoice()).thenAnswer((_) async {});
 
     // Stub the client methods properly
     when(() => client.sendUserMessageContent(any()))

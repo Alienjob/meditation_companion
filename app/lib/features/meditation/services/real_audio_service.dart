@@ -14,6 +14,13 @@ class RealAudioService implements AudioService {
   final Map<String, SoundHandle> _handles = {};
   bool _isInitialized = false;
 
+  AudioSource? _voiceStream;
+  SoundHandle? _voiceHandle;
+  String? _currentVoiceItemId;
+  bool _voiceStreamEnded = false;
+  final _voiceStateController =
+      StreamController<VoiceStreamState>.broadcast();
+
   @override
   Stream<Map<String, AmbientSoundSettings>> get soundSettingsStream =>
       _settingsController.stream;
@@ -24,7 +31,12 @@ class RealAudioService implements AudioService {
 
   RealAudioService() {
     _initialize();
+    _voiceStateController.add(VoiceStreamState.idle);
   }
+
+  @override
+  Stream<VoiceStreamState> get voiceStreamState =>
+      _voiceStateController.stream;
 
   Future<void> _initialize() async {
     try {
@@ -153,6 +165,7 @@ class RealAudioService implements AudioService {
       _handles.clear();
       _soundSettings.clear();
       await _settingsController.close();
+      await _voiceStateController.close();
     } catch (e) {
       print('Failed to dispose audio service: $e');
       rethrow;
@@ -160,18 +173,116 @@ class RealAudioService implements AudioService {
   }
 
   @override
-  Future<void> appendVoiceChunk(String itemId, Uint8List audioData) {
-    // TODO: implement appendVoiceChunk
-    throw UnimplementedError();
+  Future<void> appendVoiceChunk(String itemId, Uint8List audioData) async {
+    if (!_isInitialized) {
+      await _initialize();
+    }
+
+    if (_currentVoiceItemId != null && _currentVoiceItemId != itemId) {
+      await _resetVoiceStream();
+    }
+
+    if (_voiceStreamEnded && audioData.isNotEmpty) {
+      await _resetVoiceStream();
+    }
+
+    await _ensureVoiceStream();
+
+    if (audioData.isEmpty) {
+      if (_voiceStream != null) {
+        _soloud.setDataIsEnded(_voiceStream!);
+      }
+      _voiceStreamEnded = true;
+      _currentVoiceItemId = null;
+      return;
+    }
+
+    try {
+      _currentVoiceItemId ??= itemId;
+      _soloud.addAudioDataStream(_voiceStream!, audioData);
+    } on SoLoudStreamEndedAlreadyCppException {
+      await _resetVoiceStream();
+      await _ensureVoiceStream();
+      _currentVoiceItemId = itemId;
+      _soloud.addAudioDataStream(_voiceStream!, audioData);
+    } catch (e) {
+      if (!_voiceStateController.isClosed) {
+        _voiceStateController.add(VoiceStreamState.error);
+      }
+      rethrow;
+    }
+
+    if (_voiceHandle == null ||
+        !_soloud.getIsValidVoiceHandle(_voiceHandle!)) {
+      _voiceHandle = await _soloud.play(_voiceStream!, volume: 1);
+    }
+
+    if (!_voiceStateController.isClosed) {
+      _voiceStateController.add(VoiceStreamState.playing);
+    }
   }
 
   @override
-  Future<void> stopVoice() {
-    // TODO: implement stopVoice
-    throw UnimplementedError();
+  Future<void> stopVoice() async {
+    if (!_isInitialized) return;
+
+    await _stopVoiceHandle();
+    if (_voiceStream != null) {
+      try {
+        _soloud.resetBufferStream(_voiceStream!);
+        _soloud.setDataIsEnded(_voiceStream!);
+      } catch (_) {}
+    }
+    _currentVoiceItemId = null;
+    if (!_voiceStateController.isClosed) {
+      _voiceStateController.add(VoiceStreamState.idle);
+    }
   }
 
-  @override
-  // TODO: implement voiceStreamState
-  Stream<VoiceStreamState> get voiceStreamState => throw UnimplementedError();
+  Future<void> _ensureVoiceStream() async {
+    if (_voiceStream != null) return;
+
+    _voiceStream = _soloud.setBufferStream(
+      bufferingType: BufferingType.released,
+      bufferingTimeNeeds: 0.25,
+      sampleRate: 24000,
+      channels: Channels.mono,
+      format: BufferType.s16le,
+      onBuffering: (isBuffering, handle, time) {
+        if (_voiceStateController.isClosed) return;
+        if (isBuffering) {
+          _voiceStateController.add(VoiceStreamState.playing);
+        }
+      },
+    );
+    _voiceStreamEnded = false;
+    _voiceStateController.add(VoiceStreamState.idle);
+  }
+
+  Future<void> _stopVoiceHandle() async {
+    if (_voiceHandle != null &&
+        _soloud.getIsValidVoiceHandle(_voiceHandle!)) {
+      try {
+        await _soloud.stop(_voiceHandle!);
+      } catch (_) {}
+    }
+    _voiceHandle = null;
+  }
+
+  Future<void> _resetVoiceStream() async {
+    await _stopVoiceHandle();
+    if (_voiceStream != null) {
+      try {
+        _soloud.resetBufferStream(_voiceStream!);
+        _soloud.setDataIsEnded(_voiceStream!);
+        await _soloud.disposeSource(_voiceStream!);
+      } catch (_) {}
+    }
+    _voiceStream = null;
+    _voiceStreamEnded = false;
+    _currentVoiceItemId = null;
+    if (!_voiceStateController.isClosed) {
+      _voiceStateController.add(VoiceStreamState.idle);
+    }
+  }
 }

@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:typed_data';
-import 'package:bloc/bloc.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../../chat/bloc/chat_bloc.dart';
-import '../../audio/models/interruption_result.dart';
 import '../../audio/services/stream_timeline.dart';
 import '../../meditation/services/audio_service.dart';
 import '../services/audio_recorder.dart';
@@ -14,7 +12,6 @@ import 'assistant_event.dart';
 import 'assistant_state.dart';
 
 class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
-  final ChatBloc _chatBloc;
   final AudioService _audioService;
   final AudioRecorder _recorder;
   final RealtimeClient _client;
@@ -27,8 +24,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     required AudioService audioService,
     required AudioRecorder recorder,
     required RealtimeClient client,
-  })  : _chatBloc = chatBloc,
-        _audioService = audioService,
+  })  : _audioService = audioService,
         _recorder = recorder,
         _client = client,
         _positionTracker = StreamTimeline(24000), // 24kHz for voice
@@ -42,6 +38,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<UserMessageTranscribed>(_onUserMessageTranscribed);
     on<ResponseTextReceived>(_onResponseTextReceived);
     on<ResponseAudioReceived>(_onResponseAudioReceived);
+    on<ResponseAudioStreamEnded>(_onResponseAudioStreamEnded);
     on<InterruptResponse>(_onInterruptResponse);
     on<ResponseCompleted>(_onResponseCompleted);
     on<UpdateRecordingDuration>(_onUpdateRecordingDuration);
@@ -197,6 +194,13 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     }
   }
 
+  Future<void> _onResponseAudioStreamEnded(
+    ResponseAudioStreamEnded event,
+    Emitter<AssistantState> emit,
+  ) async {
+    await _audioService.appendVoiceChunk(event.itemId, Uint8List(0));
+  }
+
   Future<void> _onInterruptResponse(
     InterruptResponse event,
     Emitter<AssistantState> emit,
@@ -217,6 +221,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ResponseCompleted event,
     Emitter<AssistantState> emit,
   ) {
+    unawaited(_audioService.stopVoice());
     emit(state.copyWith(responseState: ResponseState.idle));
     _positionTracker.reset();
   }

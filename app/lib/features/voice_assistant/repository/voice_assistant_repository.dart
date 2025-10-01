@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:typed_data';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../../chat/models/chat_message.dart';
 import '../../chat/repository/chat_repository.dart';
@@ -60,6 +61,7 @@ class VoiceAssistantRepository implements IChatRepository {
   final _messagesController = StreamController<ChatMessage>.broadcast();
   final List<ChatMessage> _messages = [];
   final Map<String, ChatMessage> _inProgressMessages = {};
+  final Map<String, int> _processedAudioBytes = {};
 
   VoiceAssistantRepository(this._client);
 
@@ -150,12 +152,17 @@ class VoiceAssistantRepository implements IChatRepository {
         message,
         item.formatted,
       );
+      final isUser = message.role == ItemRole.user;
+      if (isUser) {
+        return;
+      }
       _upsertAssistantMessage(
         message.id,
         initialText: _initialAssistantText(item.formatted),
         appendText: null,
         markCompleted: true,
       );
+      _processedAudioBytes.remove(message.id);
     }
   }
 
@@ -197,10 +204,15 @@ class VoiceAssistantRepository implements IChatRepository {
     final existing = _inProgressMessages[messageId];
 
     if (existing == null) {
+      if ((initialText == null || initialText.isEmpty) &&
+          (appendText == null || appendText.isEmpty) &&
+          !markCompleted) {
+        return;
+      }
+
       final initialContent = (initialText ?? appendText) ?? '';
-      final status = markCompleted
-          ? MessageStatus.completed
-          : MessageStatus.streaming;
+      final status =
+          markCompleted ? MessageStatus.completed : MessageStatus.streaming;
       final content = markCompleted && initialContent.isEmpty
           ? '[voice response]'
           : initialContent;
@@ -228,7 +240,7 @@ class VoiceAssistantRepository implements IChatRepository {
     }
 
     var content = existing.content;
-    if (initialText != null) {
+    if (initialText != null && initialText.isNotEmpty) {
       content = initialText;
     }
     if (appendText != null && appendText.isNotEmpty) {
@@ -238,7 +250,8 @@ class VoiceAssistantRepository implements IChatRepository {
       content = '[voice response]';
     }
 
-    final status = markCompleted ? MessageStatus.completed : MessageStatus.streaming;
+    final status =
+        markCompleted ? MessageStatus.completed : MessageStatus.streaming;
 
     final updated = existing.copyWith(
       content: content,
@@ -255,6 +268,22 @@ class VoiceAssistantRepository implements IChatRepository {
     }
 
     _messagesController.add(updated);
+  }
+
+  Uint8List? takeNewAudioChunk(String messageId, Uint8List? formattedAudio) {
+    if (formattedAudio == null) {
+      return null;
+    }
+
+    final totalBytes = formattedAudio.length;
+    final processedBytes = _processedAudioBytes[messageId] ?? 0;
+    _processedAudioBytes[messageId] = totalBytes;
+
+    if (totalBytes <= processedBytes) {
+      return null;
+    }
+
+    return Uint8List.fromList(formattedAudio.sublist(processedBytes));
   }
 
   void dispose() {

@@ -141,15 +141,45 @@ class ChatAssistantWidget extends StatelessWidget {
         builder: (context) => BlocProvider(
           create: (context) {
             final chatBloc = context.read<ChatBloc>();
+            final assistantBloc = AssistantBloc(
+              chatBloc: chatBloc,
+              audioService: context.read<AudioService>(),
+              recorder: MockAudioRecorder(),
+              client: client,
+            );
 
             client.on(RealtimeEventType.all, (event) {
               log('Received OpenAI event: ${event.type}');
             });
 
             client.on(RealtimeEventType.conversationUpdated, (event) {
-              repository.handleConversationUpdated(
-                event as RealtimeEventConversationUpdated,
-              );
+              final typedEvent = event as RealtimeEventConversationUpdated;
+              repository.handleConversationUpdated(typedEvent);
+
+              final conversationItem = typedEvent.result.item;
+              if (conversationItem == null) {
+                return;
+              }
+              if (conversationItem.item case final ItemMessage message) {
+                if (message.role == ItemRole.assistant) {
+                  final audioChunk = repository.takeNewAudioChunk(
+                    message.id,
+                    conversationItem.formatted?.audio,
+                  );
+                  if (audioChunk != null && audioChunk.isNotEmpty) {
+                    log(
+                      'OpenAI audio chunk received: item='
+                      '${message.id} chunkBytes=${audioChunk.length}',
+                    );
+                    assistantBloc.add(
+                      ResponseAudioReceived(
+                        itemId: message.id,
+                        audioData: audioChunk,
+                      ),
+                    );
+                  }
+                }
+              }
             });
 
             client.on(RealtimeEventType.conversationItemAppended, (event) {
@@ -159,9 +189,12 @@ class ChatAssistantWidget extends StatelessWidget {
             });
 
             client.on(RealtimeEventType.conversationItemCompleted, (event) {
-              repository.handleConversationItemCompleted(
-                event as RealtimeEventConversationItemCompleted,
-              );
+              final typedEvent =
+                  event as RealtimeEventConversationItemCompleted;
+              repository.handleConversationItemCompleted(typedEvent);
+              if (typedEvent.item.item case final ItemMessage message) {
+                assistantBloc.add(ResponseAudioStreamEnded(message.id));
+              }
             });
 
             client.on(RealtimeEventType.responseOutputItemAdded, (event) {
@@ -215,13 +248,6 @@ class ChatAssistantWidget extends StatelessWidget {
                 }
               });
             });
-
-            final assistantBloc = AssistantBloc(
-              chatBloc: chatBloc,
-              audioService: context.read<AudioService>(),
-              recorder: MockAudioRecorder(),
-              client: client,
-            );
 
             client.connect().then((_) {
               log('Connected to OpenAI Realtime: ${client.isConnected()}');

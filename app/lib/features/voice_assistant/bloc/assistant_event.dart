@@ -68,6 +68,15 @@ class ResponseAudioReceived extends AssistantEvent {
   List<Object?> get props => [itemId, audioData];
 }
 
+class ResponseAudioStreamEnded extends AssistantEvent {
+  final String itemId;
+
+  const ResponseAudioStreamEnded(this.itemId);
+
+  @override
+  List<Object?> get props => [itemId];
+}
+
 class InterruptResponse extends AssistantEvent {}
 
 class ResponseCompleted extends AssistantEvent {

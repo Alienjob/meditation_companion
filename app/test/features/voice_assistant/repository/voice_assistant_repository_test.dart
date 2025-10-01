@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
@@ -145,6 +147,32 @@ void main() {
       expect(messages, hasLength(1));
       expect(messages.first.content, '[voice response]');
       expect(messages.first.status, MessageStatus.completed);
+    });
+  });
+
+  group('audio chunk tracking', () {
+    test('returns null when formatted audio missing', () {
+      final chunk = repository.takeNewAudioChunk('item', null);
+      expect(chunk, isNull);
+    });
+
+    test('returns incremental audio slices per message', () {
+      final firstChunk = repository.takeNewAudioChunk(
+        'item',
+        Uint8List.fromList([1, 2, 3]),
+      );
+      final repeatChunk = repository.takeNewAudioChunk(
+        'item',
+        Uint8List.fromList([1, 2, 3]),
+      );
+      final extendedChunk = repository.takeNewAudioChunk(
+        'item',
+        Uint8List.fromList([1, 2, 3, 4, 5]),
+      );
+
+      expect(firstChunk?.toList(), [1, 2, 3]);
+      expect(repeatChunk, isNull);
+      expect(extendedChunk?.toList(), [4, 5]);
     });
   });
 }

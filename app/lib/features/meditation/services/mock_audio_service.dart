@@ -9,6 +9,10 @@ class MockAudioService implements AudioService {
   final Map<String, AmbientSoundSettings> _soundSettings = {};
   final _settingsController =
       StreamController<Map<String, AmbientSoundSettings>>.broadcast();
+  final _voiceStateController =
+      StreamController<VoiceStreamState>.broadcast();
+
+  Uint8List? lastVoiceChunk;
 
   @override
   Stream<Map<String, AmbientSoundSettings>> get soundSettingsStream =>
@@ -63,21 +67,25 @@ class MockAudioService implements AudioService {
   @override
   Future<void> dispose() async {
     await _settingsController.close();
+    await _voiceStateController.close();
   }
 
   @override
-  Future<void> appendVoiceChunk(String itemId, Uint8List audioData) {
-    // TODO: implement appendVoiceChunk
-    throw UnimplementedError();
+  Future<void> appendVoiceChunk(String itemId, Uint8List audioData) async {
+    lastVoiceChunk = audioData;
+    if (!_voiceStateController.isClosed && audioData.isNotEmpty) {
+      _voiceStateController.add(VoiceStreamState.playing);
+    }
   }
 
   @override
-  Future<void> stopVoice() {
-    // TODO: implement stopVoice
-    throw UnimplementedError();
+  Future<void> stopVoice() async {
+    if (!_voiceStateController.isClosed) {
+      _voiceStateController.add(VoiceStreamState.idle);
+    }
   }
 
   @override
-  // TODO: implement voiceStreamState
-  Stream<VoiceStreamState> get voiceStreamState => throw UnimplementedError();
+  Stream<VoiceStreamState> get voiceStreamState =>
+      _voiceStateController.stream;
 }
