@@ -10,7 +10,7 @@ import '../../chat/models/chat_message.dart';
 import '../../chat/views/chat_widget.dart';
 import '../../voice_assistant/bloc/assistant_bloc.dart';
 import '../../voice_assistant/repository/voice_assistant_repository.dart';
-import '../../voice_assistant/services/mock_audio_recorder.dart';
+import '../../voice_assistant/services/audio_recorder.dart';
 import '../../voice_assistant/voice_assistant_widget.dart';
 import '../services/audio_service.dart';
 
@@ -144,7 +144,7 @@ class ChatAssistantWidget extends StatelessWidget {
             final assistantBloc = AssistantBloc(
               chatBloc: chatBloc,
               audioService: context.read<AudioService>(),
-              recorder: MockAudioRecorder(),
+              recorder: context.read<AudioRecorder>(),
               client: client,
             );
 
