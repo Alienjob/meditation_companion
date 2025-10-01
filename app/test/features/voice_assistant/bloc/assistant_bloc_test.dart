@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +20,6 @@ class MockAudioRecorder extends Mock implements AudioRecorder {}
 class MockRealtimeClient extends Mock implements RealtimeClient {}
 
 void main() {
-  late AssistantBloc bloc;
   late MockChatBloc chatBloc;
   late MockAudioService audioService;
   late MockAudioRecorder recorder;
@@ -42,32 +42,39 @@ void main() {
         .thenAnswer((_) async {});
     when(() => audioService.stopVoice()).thenAnswer((_) async {});
 
+    when(() => recorder.audioStream).thenAnswer((_) => const Stream.empty());
+    when(() => recorder.startStreaming()).thenAnswer((_) async {});
+    when(() => recorder.stopStreaming()).thenAnswer((_) async {});
+    when(() => client.appendInputAudio(any())).thenAnswer((_) async => true);
+    when(() => client.createResponse()).thenAnswer((_) async => true);
+
     // Stub the client methods properly
     when(() => client.sendUserMessageContent(any()))
         .thenAnswer((_) async => true);
     when(() => client.cancelResponse(any(), any()))
         .thenAnswer((_) async => null);
-
-    bloc = AssistantBloc(
-      chatBloc: chatBloc,
-      audioService: audioService,
-      recorder: recorder,
-      client: client,
-    );
-  });
-
-  tearDown(() {
-    bloc.close();
   });
 
   group('Assistant Bloc Tests', () {
     test('initial state is correct', () {
+      final bloc = AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      );
       expect(bloc.state, const AssistantState());
+      bloc.close();
     });
 
     blocTest<AssistantBloc, AssistantState>(
       'emits ready state when client connects',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       act: (bloc) => bloc.add(ClientConnected()),
       expect: () => [
         const AssistantState(clientStatus: ClientStatus.ready),
@@ -75,8 +82,32 @@ void main() {
     );
 
     blocTest<AssistantBloc, AssistantState>(
+      'toggles streaming mode on and off',
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
+      act: (bloc) {
+        bloc
+          ..add(const ToggleStreamingMode(true))
+          ..add(const ToggleStreamingMode(false));
+      },
+      expect: () => [
+        const AssistantState(streamingEnabled: true),
+        const AssistantState(streamingEnabled: false),
+      ],
+    );
+
+    blocTest<AssistantBloc, AssistantState>(
       'handles client error',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       act: (bloc) => bloc.add(const ClientError('Connection failed')),
       expect: () => [
         const AssistantState(
@@ -87,8 +118,13 @@ void main() {
     );
 
     blocTest<AssistantBloc, AssistantState>(
-      'handles recording start and duration updates',
-      build: () => bloc,
+      'handles recording start and duration updates in buffered mode',
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       seed: () => const AssistantState(clientStatus: ClientStatus.ready),
       act: (bloc) async {
         when(() => recorder.startRecording()).thenAnswer((_) async {});
@@ -117,9 +153,59 @@ void main() {
       ],
     );
 
+    test('streams audio chunks when streaming mode enabled', () async {
+      final controller = StreamController<Uint8List>.broadcast();
+      when(() => recorder.audioStream).thenAnswer((_) => controller.stream);
+
+      final bloc = AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      );
+
+      final emittedStates = <AssistantState>[];
+      final subscription = bloc.stream.listen(emittedStates.add);
+
+      bloc.add(ClientConnected());
+      await pumpEventQueue();
+      bloc.add(const ToggleStreamingMode(true));
+      await pumpEventQueue();
+
+      bloc.add(StartRecordingUserAudioInput());
+      await pumpEventQueue();
+
+      controller.add(Uint8List.fromList([1, 2, 3]));
+      await pumpEventQueue();
+
+      bloc.add(StopRecordingUserAudioInput());
+      await pumpEventQueue();
+
+      expect(
+        emittedStates.any((s) => s.userInput == UserInputState.recording),
+        isTrue,
+      );
+      expect(bloc.state.userInput, UserInputState.idle);
+      expect(bloc.state.streamingEnabled, isTrue);
+
+      verify(() => recorder.startStreaming()).called(1);
+      verify(() => recorder.stopStreaming()).called(1);
+      verify(() => client.appendInputAudio(any())).called(1);
+      verify(() => client.createResponse()).called(1);
+
+      await subscription.cancel();
+      await bloc.close();
+      await controller.close();
+    });
+
     blocTest<AssistantBloc, AssistantState>(
       'handles sending recorded audio',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       seed: () => AssistantState(
         clientStatus: ClientStatus.ready,
         userInput: UserInputState.recorded,
@@ -141,7 +227,12 @@ void main() {
 
     blocTest<AssistantBloc, AssistantState>(
       'handles audio receiving and playback',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       seed: () => const AssistantState(clientStatus: ClientStatus.ready),
       act: (bloc) async {
         when(() => audioService.appendVoiceChunk(any(), any()))
@@ -164,7 +255,12 @@ void main() {
 
     blocTest<AssistantBloc, AssistantState>(
       'handles response interruption',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       seed: () => const AssistantState(
         clientStatus: ClientStatus.ready,
         responseState: ResponseState.responding,
@@ -189,7 +285,12 @@ void main() {
 
     blocTest<AssistantBloc, AssistantState>(
       'handles response completion',
-      build: () => bloc,
+      build: () => AssistantBloc(
+        chatBloc: chatBloc,
+        audioService: audioService,
+        recorder: recorder,
+        client: client,
+      ),
       seed: () => const AssistantState(
         clientStatus: ClientStatus.ready,
         responseState: ResponseState.responding,

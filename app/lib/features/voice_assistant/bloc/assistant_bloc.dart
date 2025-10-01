@@ -18,6 +18,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   final StreamTimeline _positionTracker;
 
   Timer? _recordingTimer;
+  StreamSubscription<Uint8List>? _micStreamSubscription;
 
   AssistantBloc({
     required ChatBloc chatBloc,
@@ -35,6 +36,9 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<StopRecordingUserAudioInput>(_onStopRecording);
     on<ClearRecordedAudio>(_onClearRecording);
     on<SendRecordedAudio>(_onSendRecordedAudio);
+    on<ToggleStreamingMode>(_onToggleStreamingMode);
+    on<ServerVadSpeechStarted>(_onServerVadSpeechStarted);
+    on<ServerVadSpeechStopped>(_onServerVadSpeechStopped);
     on<UserMessageTranscribed>(_onUserMessageTranscribed);
     on<ResponseTextReceived>(_onResponseTextReceived);
     on<ResponseAudioReceived>(_onResponseAudioReceived);
@@ -65,10 +69,38 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StartRecordingUserAudioInput event,
     Emitter<AssistantState> emit,
   ) async {
-    if (!state.canRecord) return;
+    log('Start recording requested; streaming=${state.streamingEnabled} canRecord=${state.canRecord}');
+    if (!state.canRecord) {
+      log('Start recording ignored because canRecord=false');
+      return;
+    }
 
     try {
-      await _recorder.startRecording();
+      if (state.streamingEnabled) {
+        final stream = _recorder.audioStream;
+        log('Starting streaming recorder');
+        await _recorder.startStreaming();
+        await _micStreamSubscription?.cancel();
+        _micStreamSubscription = stream.listen(
+          (chunk) {
+            if (chunk.isEmpty) return;
+            log('Streaming chunk appended: ${chunk.length} bytes');
+            unawaited(
+              _client.appendInputAudio(chunk).catchError(
+                (error, stackTrace) {
+                  add(ClientError('Failed to send audio: $error'));
+                },
+              ),
+            );
+          },
+          onError: (error, stackTrace) {
+            add(ClientError('Streaming error: $error'));
+          },
+        );
+      } else {
+        log('Starting buffered recorder');
+        await _recorder.startRecording();
+      }
       emit(state.copyWith(
         userInput: UserInputState.recording,
         recordingDuration: Duration.zero,
@@ -98,11 +130,26 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     if (state.userInput != UserInputState.recording) return;
 
     try {
-      final audioData = await _recorder.stopRecording();
-      emit(state.copyWith(
-        userInput: UserInputState.recorded,
-        recordedAudio: () => audioData,
-      ));
+      if (state.streamingEnabled) {
+        await _micStreamSubscription?.cancel();
+        _micStreamSubscription = null;
+        log('Stopping streaming recorder');
+        await _recorder.stopStreaming();
+        log('Requesting response after streaming');
+        await _client.createResponse();
+        emit(state.copyWith(
+          userInput: UserInputState.idle,
+          recordedAudio: () => null,
+          recordingDuration: Duration.zero,
+        ));
+      } else {
+        log('Stopping buffered recorder');
+        final audioData = await _recorder.stopRecording();
+        emit(state.copyWith(
+          userInput: UserInputState.recorded,
+          recordedAudio: () => audioData,
+        ));
+      }
     } catch (e) {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
@@ -137,6 +184,46 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       recordedAudio: null,
       recordingDuration: Duration.zero,
     ));
+  }
+
+  void _onToggleStreamingMode(
+    ToggleStreamingMode event,
+    Emitter<AssistantState> emit,
+  ) {
+    log('Streaming mode set to ${event.enabled}');
+
+    final shouldStartStreaming = event.enabled &&
+        state.canRecord &&
+        state.userInput == UserInputState.idle;
+    final shouldStopStreaming =
+        !event.enabled && state.userInput == UserInputState.recording;
+
+    emit(state.copyWith(streamingEnabled: event.enabled));
+
+    if (shouldStartStreaming) {
+      log('Auto-starting streaming after toggle');
+      add(StartRecordingUserAudioInput());
+    } else if (shouldStopStreaming) {
+      log('Auto-stopping streaming after toggle off');
+      add(StopRecordingUserAudioInput());
+    }
+  }
+
+  void _onServerVadSpeechStarted(
+    ServerVadSpeechStarted event,
+    Emitter<AssistantState> emit,
+  ) {
+    log('Server VAD detected speech start');
+  }
+
+  void _onServerVadSpeechStopped(
+    ServerVadSpeechStopped event,
+    Emitter<AssistantState> emit,
+  ) {
+    log('Server VAD detected speech stop');
+    if (state.streamingEnabled && state.userInput == UserInputState.recording) {
+      add(StopRecordingUserAudioInput());
+    }
   }
 
   Future<void> _onSendRecordedAudio(
@@ -229,6 +316,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   @override
   Future<void> close() async {
     _recordingTimer?.cancel();
+    await _micStreamSubscription?.cancel();
     await super.close();
   }
 }

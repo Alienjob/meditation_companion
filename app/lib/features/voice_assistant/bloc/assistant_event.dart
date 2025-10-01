@@ -28,6 +28,18 @@ class ClearRecordedAudio extends AssistantEvent {}
 
 class SendRecordedAudio extends AssistantEvent {}
 
+class ToggleStreamingMode extends AssistantEvent {
+  final bool enabled;
+  const ToggleStreamingMode(this.enabled);
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
+class ServerVadSpeechStarted extends AssistantEvent {}
+
+class ServerVadSpeechStopped extends AssistantEvent {}
+
 // Response Events
 class UserMessageTranscribed extends AssistantEvent {
   final String itemId;

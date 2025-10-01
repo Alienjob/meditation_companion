@@ -235,6 +235,16 @@ class ChatAssistantWidget extends StatelessWidget {
               );
             });
 
+            client.on(RealtimeEventType.inputAudioBufferSpeechStarted, (event) {
+              log('OpenAI VAD speech started');
+              assistantBloc.add(ServerVadSpeechStarted());
+            });
+
+            client.on(RealtimeEventType.inputAudioBufferSpeechStopped, (event) {
+              log('OpenAI VAD speech stopped');
+              assistantBloc.add(ServerVadSpeechStopped());
+            });
+
             client.on(RealtimeEventType.error, (event) {
               final typedEvent = event as RealtimeEventError;
               log('OpenAI Realtime error: ${typedEvent.error}');

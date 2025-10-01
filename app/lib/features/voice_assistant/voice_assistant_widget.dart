@@ -13,6 +13,7 @@ class VoiceAssistantWidget extends StatelessWidget {
   static const Key sendButtonKey = Key('voice_assistant_send_button');
   static const Key deleteButtonKey = Key('voice_assistant_delete_button');
   static const Key interruptButtonKey = Key('voice_assistant_interrupt_button');
+  static const Key streamingToggleKey = Key('voice_assistant_stream_toggle');
 
   @override
   Widget build(BuildContext context) {
@@ -20,62 +21,80 @@ class VoiceAssistantWidget extends StatelessWidget {
       builder: (context, state) {
         return Column(
           children: [
-            // Show interrupt button when responding (takes priority)
-            if (state.responseState == ResponseState.responding) ...[
-              TextButton(
-                key: interruptButtonKey,
-                onPressed: () => context.read<AssistantBloc>().add(
-                      InterruptResponse(),
-                    ),
-                child: const Text('Interrupt'),
-              ),
-            ]
-            // Only show other buttons when NOT responding
-            else ...[
-              if (state.userInput == UserInputState.idle &&
-                  state.canRecord) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 IconButton(
-                  key: micButtonKey,
-                  icon: const Icon(Icons.mic),
+                  key: streamingToggleKey,
+                  tooltip: state.streamingEnabled
+                      ? 'Disable streaming'
+                      : 'Enable streaming',
+                  icon: Icon(
+                    state.streamingEnabled
+                        ? Icons.wifi_tethering
+                        : Icons.wifi_tethering_off,
+                  ),
+                  color: state.streamingEnabled ? Colors.deepPurple : null,
                   onPressed: () => context.read<AssistantBloc>().add(
-                        StartRecordingUserAudioInput(),
+                        ToggleStreamingMode(!state.streamingEnabled),
                       ),
                 ),
-              ],
-              if (state.userInput == UserInputState.idle &&
-                  !state.canRecord) ...[
-                CircularProgressIndicator(),
-              ],
-              if (state.userInput == UserInputState.recording) ...[
-                IconButton(
-                  key: stopButtonKey,
-                  icon: const Icon(Icons.stop),
-                  onPressed: () => context.read<AssistantBloc>().add(
-                        StopRecordingUserAudioInput(),
+                if (state.responseState == ResponseState.responding)
+                  TextButton(
+                    key: interruptButtonKey,
+                    onPressed: () => context.read<AssistantBloc>().add(
+                          InterruptResponse(),
+                        ),
+                    child: const Text('Interrupt'),
+                  )
+                else if (state.userInput == UserInputState.idle &&
+                    state.canRecord)
+                  IconButton(
+                    key: micButtonKey,
+                    icon: const Icon(Icons.mic),
+                    onPressed: () => context.read<AssistantBloc>().add(
+                          StartRecordingUserAudioInput(),
+                        ),
+                  )
+                else if (state.userInput == UserInputState.idle &&
+                    !state.canRecord)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (state.userInput == UserInputState.recording)
+                  IconButton(
+                    key: stopButtonKey,
+                    icon: const Icon(Icons.stop),
+                    onPressed: () => context.read<AssistantBloc>().add(
+                          StopRecordingUserAudioInput(),
+                        ),
+                  )
+                else if (state.userInput == UserInputState.recorded)
+                  Row(
+                    children: [
+                      IconButton(
+                        key: sendButtonKey,
+                        icon: const Icon(Icons.send),
+                        onPressed: () => context.read<AssistantBloc>().add(
+                              SendRecordedAudio(),
+                            ),
                       ),
-                ),
+                      IconButton(
+                        key: deleteButtonKey,
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => context.read<AssistantBloc>().add(
+                              ClearRecordedAudio(),
+                            ),
+                      ),
+                    ],
+                  ),
               ],
-              if (state.userInput == UserInputState.recorded) ...[
-                Row(
-                  children: [
-                    IconButton(
-                      key: sendButtonKey,
-                      icon: const Icon(Icons.send),
-                      onPressed: () => context.read<AssistantBloc>().add(
-                            SendRecordedAudio(),
-                          ),
-                    ),
-                    IconButton(
-                      key: deleteButtonKey,
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => context.read<AssistantBloc>().add(
-                            ClearRecordedAudio(),
-                          ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
+            ),
           ],
         );
       },
