@@ -151,7 +151,7 @@ class VoiceAssistantToolset {
       buffer.writeln('- ${tool.promptInstruction}');
     }
     buffer.writeln(
-        'When using a tool, respond with the tool call result and wait for follow-up.');
+        'When you call a tool, immediately confirm the action in under 10 words and stay available for further dialogue—do not wait for meditation sessions to finish.');
     return buffer.toString();
   }
 
