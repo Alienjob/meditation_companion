@@ -2,6 +2,7 @@
 // This would normally be part of the main app, but this demonstrates the logging flow
 
 import 'dart:developer';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_bloc.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_event.dart';
@@ -131,11 +132,11 @@ void main() {
               role: ItemRole.user,
               content: const [],
             ),
-            formatted: const FormattedProperty(
+            formatted: FormattedProperty(
               transcript:
                   'I need meditation help, please guide me through breathing exercises',
               text: '',
-              audio: null,
+              audio: Uint8List(0),
             ),
           ),
         ),

@@ -19,11 +19,12 @@ void main() {
 
   setUp(() {
     client = MockRealtimeClient();
-    repository = VoiceAssistantRepository(client);
 
     when(() => client.sendUserMessageContent(any()))
         .thenAnswer((_) async => true);
     when(() => client.isConnected()).thenReturn(true);
+
+    repository = VoiceAssistantRepository(client);
   });
 
   group('VoiceAssistantRepository', () {

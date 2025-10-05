@@ -84,7 +84,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         _micStreamSubscription = stream.listen(
           (chunk) {
             if (chunk.isEmpty) return;
-            log('Streaming chunk appended: ${chunk.length} bytes');
+            // log('Streaming chunk appended: ${chunk.length} bytes');
             unawaited(
               _client.appendInputAudio(chunk).catchError(
                 (error, stackTrace) {

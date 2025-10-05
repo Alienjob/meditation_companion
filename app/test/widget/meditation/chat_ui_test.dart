@@ -30,7 +30,7 @@ void main() {
 
   group('ChatWidget', () {
     testWidgets('displays empty state when no messages', (tester) async {
-      const state = ChatConnected([]);
+      final state = ChatConnected([]);
 
       whenListen(
         chatBloc,

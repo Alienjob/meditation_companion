@@ -14,11 +14,13 @@ class ChatLoading extends ChatState {}
 
 class ChatConnected extends ChatState {
   final List<ChatMessage> messages;
+  final int timestamp;
 
-  const ChatConnected(this.messages);
+  ChatConnected(this.messages)
+      : timestamp = DateTime.now().millisecondsSinceEpoch;
 
   @override
-  List<Object> get props => [messages];
+  List<Object> get props => [messages, timestamp];
 
   ChatConnected copyWith({
     List<ChatMessage>? messages,

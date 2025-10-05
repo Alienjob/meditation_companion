@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/chat_bloc.dart';
@@ -12,6 +13,9 @@ class ChatWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<ChatBloc, ChatState>(
       builder: (context, state) {
+        // LOG UI STATE CHANGES
+        dev.log(
+            '[ChatWidget] UI REBUILD: State changed to ${state.runtimeType} at ${DateTime.now().toIso8601String()}');
         return Column(
           children: [
             Expanded(
@@ -33,6 +37,15 @@ class ChatWidget extends StatelessWidget {
       ChatFailure(messages: final msgs) => msgs,
       _ => <ChatMessage>[],
     };
+
+    // LOG UI MESSAGES
+    dev.log(
+        '[ChatWidget] UI RENDER: About to render ${messages.length} messages at ${DateTime.now().toIso8601String()}');
+    for (int i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+      dev.log(
+          '[ChatWidget] UI RENDER: Index $i - id=${msg.id}, isUser=${msg.isUser}, content="${msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content}", status=${msg.status.name}');
+    }
 
     return ListView.builder(
       reverse: true,

@@ -52,22 +52,30 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatMessageReceived event,
     Emitter<ChatState> emit,
   ) {
-    log('ChatBloc - _onChatMessageReceived: processing message id=${event.message.id}, content="${event.message.content.length > 50 ? event.message.content.substring(0, 50) + '...' : event.message.content}", isUser=${event.message.isUser}, status=${event.message.status.name} at ${DateTime.now().toIso8601String()}');
+    final timestamp = DateTime.now().toIso8601String();
+    log('ChatBloc - MESSAGE STREAM RECEIVED: id=${event.message.id}, content="${event.message.content.length > 30 ? event.message.content.substring(0, 30) + '...' : event.message.content}", isUser=${event.message.isUser}, status=${event.message.status.name} at $timestamp');
+    log('ChatBloc - MESSAGE PROCESSING START: About to process ${event.message.isUser ? 'USER' : 'ASSISTANT'} message for UI display');
+
+    log('ChatBloc - SYNC CHECK: Looking for message id=${event.message.id} in ${_messages.length} existing messages');
+    for (int i = 0; i < _messages.length; i++) {
+      log('ChatBloc - SYNC CHECK: Index $i - id=${_messages[i].id}, content="${_messages[i].content.length > 20 ? _messages[i].content.substring(0, 20) + '...' : _messages[i].content}"');
+    }
 
     final existingIndex = _messages.indexWhere((m) => m.id == event.message.id);
     if (existingIndex != -1) {
-      log('ChatBloc - Updating existing message at index $existingIndex');
+      log('ChatBloc - FOUND EXISTING: Updating message at index $existingIndex');
       final oldContent = _messages[existingIndex].content;
       _messages[existingIndex] = event.message;
       log('ChatBloc - Message updated: "${oldContent.length > 30 ? oldContent.substring(0, 30) + '...' : oldContent}" -> "${event.message.content.length > 30 ? event.message.content.substring(0, 30) + '...' : event.message.content}"');
     } else {
-      log('ChatBloc - Adding new message to list');
+      log('ChatBloc - NOT FOUND: Adding new message to list');
       _messages.add(event.message);
     }
 
     log('ChatBloc - Total messages in list: ${_messages.length}');
     emit(ChatConnected(List.from(_messages)));
-    log('ChatBloc - Emitted ChatConnected state at ${DateTime.now().toIso8601String()}');
+    log('ChatBloc - MESSAGE PROCESSING COMPLETE: Emitted ChatConnected state with ${_messages.length} messages at ${DateTime.now().toIso8601String()}');
+    log('ChatBloc - UI UPDATE: Chat UI should now display the updated message list');
   }
 
   Future<void> _onSendChatMessage(

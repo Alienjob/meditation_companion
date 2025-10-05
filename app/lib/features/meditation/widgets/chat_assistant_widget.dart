@@ -125,6 +125,16 @@ class ChatAssistantWidget extends StatelessWidget {
         log('ChatAssistantWidget - Setting up ChatBloc stream listener');
         chatBloc.stream.listen((state) {
           log('ChatAssistantWidget - ChatBloc state changed: ${state.runtimeType} at ${DateTime.now().toIso8601String()}');
+          // LOG STATE CONTENT
+          final messageCount = switch (state) {
+            ChatConnected(messages: final msgs) => msgs.length,
+            ChatDisconnected(messages: final msgs) => msgs.length,
+            MessageSending(messages: final msgs) => msgs.length,
+            MessageSent(messages: final msgs) => msgs.length,
+            ChatFailure(messages: final msgs) => msgs.length,
+            _ => 0,
+          };
+          log('ChatAssistantWidget - State contains $messageCount messages');
           if (state is ChatConnected && !welcomeMessageAdded) {
             log('ChatAssistantWidget - Adding welcome message');
             final welcomeMessage = ChatMessage(
@@ -156,7 +166,7 @@ class ChatAssistantWidget extends StatelessWidget {
             );
 
             client.on(RealtimeEventType.all, (event) {
-              log('Received OpenAI event: ${event.type}');
+              // log('Received OpenAI event: ${event.type}');
             });
 
             client.on(RealtimeEventType.conversationUpdated, (event) {

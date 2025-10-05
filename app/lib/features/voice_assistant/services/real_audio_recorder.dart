@@ -175,8 +175,8 @@ class RealAudioRecorder implements AudioRecorder {
             case _RecorderMode.streaming:
               final controller = _streamController;
               if (controller != null && !controller.isClosed) {
-                debugPrint(
-                    'RealAudioRecorder: streaming chunk size=${chunk.length}');
+                // debugPrint(
+                // 'RealAudioRecorder: streaming chunk size=${chunk.length}');
                 controller.add(chunk);
               }
               break;

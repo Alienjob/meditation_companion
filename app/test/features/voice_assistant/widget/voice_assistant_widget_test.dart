@@ -17,7 +17,7 @@ import 'package:openai_realtime_dart/openai_realtime_dart.dart'; // Add this imp
 
 class MockChatBloc extends MockBloc<ChatEvent, ChatState> implements ChatBloc {
   MockChatBloc() {
-    when(() => state).thenReturn(const ChatConnected([]));
+    when(() => state).thenReturn(ChatConnected([]));
   }
 }
 
