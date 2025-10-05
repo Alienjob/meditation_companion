@@ -7,7 +7,12 @@ import '../bloc/chat_state.dart';
 import '../models/chat_message.dart';
 
 class ChatWidget extends StatelessWidget {
-  const ChatWidget({super.key});
+  const ChatWidget({
+    super.key,
+    this.scrollController,
+  });
+
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +62,7 @@ class ChatWidget extends StatelessWidget {
     }
 
     return ListView.builder(
+      controller: scrollController,
       reverse: true,
       itemCount: messages.length,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

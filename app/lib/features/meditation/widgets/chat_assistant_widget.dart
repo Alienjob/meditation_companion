@@ -69,7 +69,12 @@ String _describeItem(Item item) {
 }
 
 class ChatAssistantWidget extends StatelessWidget {
-  const ChatAssistantWidget({super.key});
+  const ChatAssistantWidget({
+    super.key,
+    this.scrollController,
+  });
+
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -368,10 +373,12 @@ class ChatAssistantWidget extends StatelessWidget {
 
             return assistantBloc;
           },
-          child: const Column(
+          child: Column(
             children: [
-              Expanded(child: ChatWidget()),
-              Padding(
+              Expanded(
+                child: ChatWidget(scrollController: scrollController),
+              ),
+              const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: VoiceAssistantWidget(),
               ),

@@ -18,8 +18,10 @@ class MeditationInitialWidget extends StatelessWidget {
           const SizedBox(height: 32),
           const Text('Select Duration'),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
             children: [
               _DurationButton(
                 minutes: 1,
