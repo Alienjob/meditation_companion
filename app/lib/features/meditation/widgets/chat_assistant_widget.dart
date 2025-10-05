@@ -116,12 +116,17 @@ class ChatAssistantWidget extends StatelessWidget {
 
     return BlocProvider(
       create: (context) {
+        log('ChatAssistantWidget - Creating ChatBloc with VoiceAssistantRepository at ${DateTime.now().toIso8601String()}');
         final chatBloc = ChatBloc(repository);
+        log('ChatAssistantWidget - ChatBloc created, sending ChatStreamConnected event');
         chatBloc.add(ChatStreamConnected());
 
         bool welcomeMessageAdded = false;
+        log('ChatAssistantWidget - Setting up ChatBloc stream listener');
         chatBloc.stream.listen((state) {
+          log('ChatAssistantWidget - ChatBloc state changed: ${state.runtimeType} at ${DateTime.now().toIso8601String()}');
           if (state is ChatConnected && !welcomeMessageAdded) {
+            log('ChatAssistantWidget - Adding welcome message');
             final welcomeMessage = ChatMessage(
               id: 'welcome-${DateTime.now().millisecondsSinceEpoch}',
               content:
@@ -132,9 +137,11 @@ class ChatAssistantWidget extends StatelessWidget {
             );
             chatBloc.add(ChatMessageReceived(welcomeMessage));
             welcomeMessageAdded = true;
+            log('ChatAssistantWidget - Welcome message added');
           }
         });
 
+        log('ChatAssistantWidget - ChatBloc setup completed');
         return chatBloc;
       },
       child: Builder(

@@ -71,9 +71,14 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final colorScheme = Theme.of(context).colorScheme;
     final displayText = switch (message.status) {
-      MessageStatus.streaming || MessageStatus.pending =>
-          message.content.isEmpty ? '…' : '${message.content} …',
-      MessageStatus.completed => message.content,
+      MessageStatus.streaming ||
+      MessageStatus.pending =>
+        message.content.isEmpty
+            ? (message.isUser ? 'Speaking…' : 'Listening…')
+            : '${message.content} …',
+      MessageStatus.completed => message.content.isEmpty
+          ? (message.isUser ? '' : '[Voice response]')
+          : message.content,
     };
 
     return Align(
