@@ -21,3 +21,5 @@ samples, guidance on mobile development, and a full API reference.
 - Logs carry `[domain/feature]` tags that are inferred from the call site. Override them with the optional `domain`/`feature` parameters when you need a different context.
 - Control which logs are emitted in debug builds via `--dart-define=LOG_TAGS=domain:feature,other:*`. Wildcards (`*`) are supported per tag component.
 - Disable all tags with `--dart-define=LOG_TAGS=off`. Release builds ignore logging regardless of the flag.
+- Use `--dart-define=OPENAI_REALTIME_MODEL=<model-id>` to override the default realtime model (`gpt-4o-mini-realtime-preview-2024-12-17`).
+- Use `--dart-define=OPENAI_REALTIME_LANGUAGE=<locale>` to set the preferred transcription language (defaults to `en`).

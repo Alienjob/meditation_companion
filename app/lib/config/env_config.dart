@@ -26,6 +26,28 @@ class EnvConfig {
     return value;
   }
 
+  static String get openAiRealtimeModel {
+    const value = String.fromEnvironment(
+      'OPENAI_REALTIME_MODEL',
+      defaultValue: 'gpt-4o-mini-realtime-preview-2024-12-17',
+    );
+    if (value.isEmpty) {
+      return 'gpt-4o-mini-realtime-preview-2024-12-17';
+    }
+    return value;
+  }
+
+  static String get openAiRealtimeLanguage {
+    const value = String.fromEnvironment(
+      'OPENAI_REALTIME_LANGUAGE',
+      defaultValue: 'en',
+    );
+    if (value.isEmpty) {
+      return 'en';
+    }
+    return value;
+  }
+
   static bool isValid() {
     return supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
   }
