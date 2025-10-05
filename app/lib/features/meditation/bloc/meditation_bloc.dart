@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'dart:developer' as dev;
+
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:uuid/uuid.dart';
+
 import 'package:meditation_companion/features/analytics/models/analytics_event.dart'
     as analytics;
 import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
@@ -20,6 +22,19 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
   String? _currentUserId;
   StreamSubscription<Duration>? _timerSubscription;
   StreamSubscription<Map<String, AmbientSoundSettings>>? _audioSubscription;
+
+  static const _domain = 'Meditation';
+  static const _featureTimer = 'Meditation Timer';
+  static const _featureSession = 'Meditation Session';
+
+  void _debug(String feature, String message) {
+    logDebug(
+      message,
+      domain: _domain,
+      feature: feature,
+      context: MeditationBloc,
+    );
+  }
 
   MeditationBloc({
     required TimerService timerService,
@@ -223,7 +238,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     UpdateTime event,
     Emitter<MeditationState> emit,
   ) async {
-    dev.log('UpdateTime: ${event.time}');
+    _debug(_featureTimer, 'UpdateTime: ${event.time}');
 
     if (state is! MeditationActive) return;
 
@@ -231,7 +246,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
     final session = currentState.session;
 
     if (event.time >= session.duration) {
-      dev.log('Time is up, completing meditation');
+      _debug(_featureSession, 'Time is up, completing meditation');
       final completedSession = session.copyWith(
         status: MeditationStatus.completed,
         currentTime: session.duration,
@@ -251,7 +266,7 @@ class MeditationBloc extends Bloc<MeditationEvent, MeditationState> {
       );
 
       emit(MeditationCompleted(session: completedSession));
-      dev.log('Emitted completed state');
+      _debug(_featureSession, 'Emitted completed state');
     } else {
       emit(MeditationActive(
         session: session.copyWith(currentTime: event.time),

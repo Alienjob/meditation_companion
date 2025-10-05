@@ -2,9 +2,33 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:record/record.dart' as record_pkg;
 
 import 'audio_recorder.dart';
+
+const _recorderDomain = 'Voice Assistant';
+const _recorderFeature = 'Audio Recorder';
+
+void _recorderDebug(String message) {
+  logDebug(
+    message,
+    domain: _recorderDomain,
+    feature: _recorderFeature,
+    context: RealAudioRecorder,
+  );
+}
+
+void _recorderError(String message, {Object? error, StackTrace? stackTrace}) {
+  logError(
+    message,
+    domain: _recorderDomain,
+    feature: _recorderFeature,
+    error: error,
+    stackTrace: stackTrace,
+    context: RealAudioRecorder,
+  );
+}
 
 enum _RecorderMode { none, buffered, streaming }
 
@@ -91,7 +115,7 @@ class RealAudioRecorder implements AudioRecorder {
       throw const AudioRecorderException('Recorder already active');
     }
     _ensureStreamController();
-    debugPrint('RealAudioRecorder: startStreaming()');
+    _recorderDebug('RealAudioRecorder: startStreaming()');
     await _startCapture(_RecorderMode.streaming);
   }
 
@@ -105,7 +129,7 @@ class RealAudioRecorder implements AudioRecorder {
     final subscription = _recordingSubscription;
 
     try {
-      debugPrint('RealAudioRecorder: stopStreaming()');
+      _recorderDebug('RealAudioRecorder: stopStreaming()');
       final stopResult = _audioRecorder.stop();
       if (completer != null) {
         await completer.future;
@@ -161,7 +185,7 @@ class RealAudioRecorder implements AudioRecorder {
 
       _mode = mode;
       _recordingClosed = Completer<void>();
-      debugPrint(
+      _recorderDebug(
           'RealAudioRecorder: recorder.startStream resolved (mode=$mode)');
 
       _recordingSubscription = stream.listen(
@@ -175,8 +199,7 @@ class RealAudioRecorder implements AudioRecorder {
             case _RecorderMode.streaming:
               final controller = _streamController;
               if (controller != null && !controller.isClosed) {
-                // debugPrint(
-                // 'RealAudioRecorder: streaming chunk size=${chunk.length}');
+                // _recorderDebug('RealAudioRecorder: streaming chunk size=${chunk.length}');
                 controller.add(chunk);
               }
               break;
@@ -186,19 +209,27 @@ class RealAudioRecorder implements AudioRecorder {
         },
         cancelOnError: true,
         onError: (error, stackTrace) {
-          debugPrint('RealAudioRecorder: stream error $error');
+          _recorderError(
+            'RealAudioRecorder: stream error $error',
+            error: error,
+            stackTrace: stackTrace,
+          );
           if (_recordingClosed?.isCompleted ?? true) return;
           _recordingClosed?.completeError(error, stackTrace);
         },
         onDone: () {
-          debugPrint('RealAudioRecorder: stream done (mode=$_mode)');
+          _recorderDebug('RealAudioRecorder: stream done (mode=$_mode)');
           if (!(_recordingClosed?.isCompleted ?? true)) {
             _recordingClosed?.complete();
           }
         },
       );
     } catch (error, stackTrace) {
-      debugPrint('RealAudioRecorder: failed to start capture $error');
+      _recorderError(
+        'RealAudioRecorder: failed to start capture $error',
+        error: error,
+        stackTrace: stackTrace,
+      );
       await _audioRecorder.cancel();
       _resetBuffer();
       Error.throwWithStackTrace(

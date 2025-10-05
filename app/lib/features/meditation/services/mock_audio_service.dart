@@ -9,8 +9,7 @@ class MockAudioService implements AudioService {
   final Map<String, AmbientSoundSettings> _soundSettings = {};
   final _settingsController =
       StreamController<Map<String, AmbientSoundSettings>>.broadcast();
-  final _voiceStateController =
-      StreamController<VoiceStreamState>.broadcast();
+  final _voiceStateController = StreamController<VoiceStreamState>.broadcast();
 
   Uint8List? lastVoiceChunk;
 
@@ -86,6 +85,5 @@ class MockAudioService implements AudioService {
   }
 
   @override
-  Stream<VoiceStreamState> get voiceStreamState =>
-      _voiceStateController.stream;
+  Stream<VoiceStreamState> get voiceStreamState => _voiceStateController.stream;
 }

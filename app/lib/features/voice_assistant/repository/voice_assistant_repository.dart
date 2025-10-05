@@ -1,9 +1,27 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:typed_data';
+
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
+
 import '../../chat/models/chat_message.dart';
 import '../../chat/repository/chat_repository.dart';
+
+const _voiceDomain = 'Voice Assistant';
+const _repoLifecycle = 'Voice Assistant Repository Lifecycle';
+const _repoStream = 'Voice Assistant Repository Stream';
+const _repoUserMessage = 'Voice Assistant Repository User Message';
+const _repoAssistantMessage = 'Voice Assistant Repository Assistant Message';
+const _repoOpenAi = 'Voice Assistant Repository OpenAI';
+
+void _repoDebug(String feature, String message) {
+  logDebug(
+    message,
+    domain: _voiceDomain,
+    feature: feature,
+    context: VoiceAssistantRepository,
+  );
+}
 
 String _clipLogText(String value, {bool fromEnd = false}) {
   if (value.isEmpty) return '<empty>';
@@ -28,7 +46,8 @@ void _logMessageSnapshot(
   final deltaTranscriptLen = delta?.transcript?.length ?? 0;
   final deltaAudioBytes = delta?.audio?.length ?? 0;
 
-  log(
+  _repoDebug(
+    _repoOpenAi,
     '$prefix role=${message.role.name} '
     'text="${_clipLogText(text)}" '
     'transcriptLen=${transcript.length} '
@@ -65,14 +84,26 @@ class VoiceAssistantRepository implements IChatRepository {
   final Map<String, ChatMessage> _inProgressUserMessages = {};
 
   VoiceAssistantRepository(this._client) {
-    log('VoiceAssistantRepository - Constructor initialized at ${DateTime.now().toIso8601String()}');
-    log('VoiceAssistantRepository - Client connected: ${_client.isConnected()}');
+    _repoDebug(
+      _repoLifecycle,
+      'VoiceAssistantRepository - Constructor initialized at ${DateTime.now().toIso8601String()}',
+    );
+    _repoDebug(
+      _repoLifecycle,
+      'VoiceAssistantRepository - Client connected: ${_client.isConnected()}',
+    );
   }
 
   @override
   Stream<ChatMessage> getMessageStream() {
-    log('VoiceAssistantRepository - getMessageStream called at ${DateTime.now().toIso8601String()}');
-    log('VoiceAssistantRepository - Stream controller is closed: ${_messagesController.isClosed}');
+    _repoDebug(
+      _repoStream,
+      'VoiceAssistantRepository - getMessageStream called at ${DateTime.now().toIso8601String()}',
+    );
+    _repoDebug(
+      _repoStream,
+      'VoiceAssistantRepository - Stream controller is closed: ${_messagesController.isClosed}',
+    );
     return _messagesController.stream;
   }
 
@@ -84,37 +115,76 @@ class VoiceAssistantRepository implements IChatRepository {
   @override
   Future<void> sendMessage(ChatMessage message) async {
     final timestamp = DateTime.now().toIso8601String();
-    log('VoiceAssistantRepository - TEXT MESSAGE SEND START: id=${message.id}, content="${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}", isUser=${message.isUser} at $timestamp');
-    log('VoiceAssistantRepository - TEXT MESSAGE TYPE: This is a text message from UI, should create awaiting message');
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - TEXT MESSAGE SEND START: id=${message.id}, content="${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}", isUser=${message.isUser} at $timestamp',
+    );
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - TEXT MESSAGE TYPE: This is a text message from UI, should create awaiting message',
+    );
 
     if (!message.isUser) {
       _messages.add(message);
-      log('VoiceAssistantRepository - Added assistant message to local list');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Added assistant message to local list',
+      );
       _messagesController.add(message);
-      log('VoiceAssistantRepository - Emitted assistant message to stream');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Emitted assistant message to stream',
+      );
     } else {
       // For user messages, add to chat immediately but also track for API event matching
-      log('VoiceAssistantRepository - TEXT MESSAGE: Adding to _messages list at ${DateTime.now().toIso8601String()}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - TEXT MESSAGE: Adding to _messages list at ${DateTime.now().toIso8601String()}',
+      );
       _messages.add(message);
-      log('VoiceAssistantRepository - TEXT MESSAGE: Added to local list, index=${_messages.length - 1}, total=${_messages.length}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - TEXT MESSAGE: Added to local list, index=${_messages.length - 1}, total=${_messages.length}',
+      );
 
-      log('VoiceAssistantRepository - TEXT MESSAGE: Emitting to stream at ${DateTime.now().toIso8601String()}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - TEXT MESSAGE: Emitting to stream at ${DateTime.now().toIso8601String()}',
+      );
       _messagesController.add(message);
-      log('VoiceAssistantRepository - TEXT MESSAGE: Emitted to stream, controller closed=${_messagesController.isClosed}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - TEXT MESSAGE: Emitted to stream, controller closed=${_messagesController.isClosed}',
+      );
 
       // Store for potential transcript updates from API events
       _inProgressUserMessages[message.content] = message;
-      log('VoiceAssistantRepository - TEXT MESSAGE: Stored as awaiting message with key="${message.content}"');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - TEXT MESSAGE: Stored as awaiting message with key="${message.content}"',
+      );
     }
 
-    log('VoiceAssistantRepository - Total messages in list: ${_messages.length}');
-    log('VoiceAssistantRepository - Stream controller closed: ${_messagesController.isClosed}');
-    log('VoiceAssistantRepository - Sending message, client connected: ${_client.isConnected()}');
+    _repoDebug(
+      _repoStream,
+      'VoiceAssistantRepository - Total messages in list: ${_messages.length}',
+    );
+    _repoDebug(
+      _repoStream,
+      'VoiceAssistantRepository - Stream controller closed: ${_messagesController.isClosed}',
+    );
+    _repoDebug(
+      _repoStream,
+      'VoiceAssistantRepository - Sending message, client connected: ${_client.isConnected()}',
+    );
 
     await _client.sendUserMessageContent([
       ContentPart.inputText(text: message.content),
     ]);
-    log('VoiceAssistantRepository - Message sent to OpenAI client at ${DateTime.now().toIso8601String()}');
+    _repoDebug(
+      _repoOpenAi,
+      'VoiceAssistantRepository - Message sent to OpenAI client at ${DateTime.now().toIso8601String()}',
+    );
   }
 
   void handleConversationUpdated(RealtimeEventConversationUpdated event) {
@@ -222,9 +292,9 @@ class VoiceAssistantRepository implements IChatRepository {
       markCompleted: false,
     );
 
-    log(
-      'OpenAI response text delta: item=${event.itemId} '
-      'deltaLen=${delta.length}',
+    _repoDebug(
+      _repoOpenAi,
+      'OpenAI response text delta: item=${event.itemId} deltaLen=${delta.length}',
     );
   }
 
@@ -235,9 +305,9 @@ class VoiceAssistantRepository implements IChatRepository {
       appendText: null,
       markCompleted: true,
     );
-    log(
-      'OpenAI response text done: item=${event.itemId} '
-      'textLen=${event.text.length}',
+    _repoDebug(
+      _repoOpenAi,
+      'OpenAI response text done: item=${event.itemId} textLen=${event.text.length}',
     );
   }
 
@@ -247,7 +317,10 @@ class VoiceAssistantRepository implements IChatRepository {
     String? appendText,
     required bool markCompleted,
   }) {
-    log('VoiceAssistantRepository - _upsertAssistantMessage: messageId=$messageId, initialText="${initialText ?? '<null>'}", appendText="${appendText ?? '<null>'}", markCompleted=$markCompleted at ${DateTime.now().toIso8601String()}');
+    _repoDebug(
+      _repoAssistantMessage,
+      'VoiceAssistantRepository - _upsertAssistantMessage: messageId=$messageId, initialText="${initialText ?? '<null>'}", appendText="${appendText ?? '<null>'}", markCompleted=$markCompleted at ${DateTime.now().toIso8601String()}',
+    );
 
     final existing = _inProgressMessages[messageId];
 
@@ -273,21 +346,36 @@ class VoiceAssistantRepository implements IChatRepository {
         status: status,
       );
 
-      log('VoiceAssistantRepository - Creating new assistant message: content="${content.length > 50 ? content.substring(0, 50) + '...' : content}", status=${status.name}');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Creating new assistant message: content="${content.length > 50 ? content.substring(0, 50) + '...' : content}", status=${status.name}',
+      );
       _inProgressMessages[messageId] = message;
 
       final index = _messages.indexWhere((m) => m.id == messageId);
       if (index == -1) {
         _messages.add(message);
-        log('VoiceAssistantRepository - Added new assistant message to list (index=${_messages.length - 1})');
+        _repoDebug(
+          _repoAssistantMessage,
+          'VoiceAssistantRepository - Added new assistant message to list (index=${_messages.length - 1})',
+        );
       } else {
         _messages[index] = message;
-        log('VoiceAssistantRepository - Updated existing assistant message at index $index');
+        _repoDebug(
+          _repoAssistantMessage,
+          'VoiceAssistantRepository - Updated existing assistant message at index $index',
+        );
       }
 
-      log('VoiceAssistantRepository - Emitting assistant message to stream: id=$messageId');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Emitting assistant message to stream: id=$messageId',
+      );
       _messagesController.add(message);
-      log('VoiceAssistantRepository - Assistant message emitted, stream closed: ${_messagesController.isClosed}');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Assistant message emitted, stream closed: ${_messagesController.isClosed}',
+      );
       return;
     }
 
@@ -310,21 +398,36 @@ class VoiceAssistantRepository implements IChatRepository {
       status: status,
     );
 
-    log('VoiceAssistantRepository - Updating existing assistant message: old content="${existing.content.length > 30 ? existing.content.substring(0, 30) + '...' : existing.content}" -> new content="${content.length > 30 ? content.substring(0, 30) + '...' : content}", status=${status.name}');
+    _repoDebug(
+      _repoAssistantMessage,
+      'VoiceAssistantRepository - Updating existing assistant message: old content="${existing.content.length > 30 ? existing.content.substring(0, 30) + '...' : existing.content}" -> new content="${content.length > 30 ? content.substring(0, 30) + '...' : content}", status=${status.name}',
+    );
     _inProgressMessages[messageId] = updated;
 
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index == -1) {
       _messages.add(updated);
-      log('VoiceAssistantRepository - Added updated assistant message to list (new index=${_messages.length - 1})');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Added updated assistant message to list (new index=${_messages.length - 1})',
+      );
     } else {
       _messages[index] = updated;
-      log('VoiceAssistantRepository - Updated assistant message at index $index');
+      _repoDebug(
+        _repoAssistantMessage,
+        'VoiceAssistantRepository - Updated assistant message at index $index',
+      );
     }
 
-    log('VoiceAssistantRepository - Emitting updated assistant message to stream: id=$messageId');
+    _repoDebug(
+      _repoAssistantMessage,
+      'VoiceAssistantRepository - Emitting updated assistant message to stream: id=$messageId',
+    );
     _messagesController.add(updated);
-    log('VoiceAssistantRepository - Updated assistant message emitted, stream closed: ${_messagesController.isClosed}');
+    _repoDebug(
+      _repoAssistantMessage,
+      'VoiceAssistantRepository - Updated assistant message emitted, stream closed: ${_messagesController.isClosed}',
+    );
   }
 
   void _upsertUserMessage(
@@ -334,18 +437,33 @@ class VoiceAssistantRepository implements IChatRepository {
     required bool markCompleted,
   }) {
     final timestamp = DateTime.now().toIso8601String();
-    log('VoiceAssistantRepository - _upsertUserMessage START: messageId=$messageId, transcript="${transcript ?? '<null>'}", deltaTranscript="${deltaTranscript ?? '<null>'}", markCompleted=$markCompleted at $timestamp');
-    log('VoiceAssistantRepository - MESSAGE TYPE CHECK: Is this voice message (should create by ID) or text message (should find awaiting)?');
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - _upsertUserMessage START: messageId=$messageId, transcript="${transcript ?? '<null>'}", deltaTranscript="${deltaTranscript ?? '<null>'}", markCompleted=$markCompleted at $timestamp',
+    );
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - MESSAGE TYPE CHECK: Is this voice message (should create by ID) or text message (should find awaiting)?',
+    );
 
     // Try to find existing user message by content/transcript match
     final transcriptText = transcript ?? deltaTranscript;
     if (transcriptText == null || transcriptText.isEmpty) {
-      log('VoiceAssistantRepository - No transcript text provided, skipping user message upsert');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - No transcript text provided, skipping user message upsert',
+      );
       return;
     }
 
-    log('VoiceAssistantRepository - Looking for existing user message with transcript: "$transcriptText"');
-    log('VoiceAssistantRepository - Current _inProgressUserMessages count: ${_inProgressUserMessages.length}');
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - Looking for existing user message with transcript: "$transcriptText"',
+    );
+    _repoDebug(
+      _repoUserMessage,
+      'VoiceAssistantRepository - Current _inProgressUserMessages count: ${_inProgressUserMessages.length}',
+    );
 
     // Look for existing user message in _inProgressUserMessages first
     ChatMessage? existingMessage;
@@ -353,7 +471,10 @@ class VoiceAssistantRepository implements IChatRepository {
 
     // Skip very short transcripts that are likely noise or partial updates
     if (transcriptText.trim().length <= 1) {
-      log('VoiceAssistantRepository - Skipping very short transcript: "$transcriptText"');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - Skipping very short transcript: "$transcriptText"',
+      );
       return;
     }
 
@@ -380,36 +501,63 @@ class VoiceAssistantRepository implements IChatRepository {
 
     if (existingMessage != null && existingKey != null) {
       // Update existing message with full transcript
-      log('VoiceAssistantRepository - Found existing user message to update: key="$existingKey"');
-      log('VoiceAssistantRepository - MESSAGE ID MISMATCH CHECK: existing.id="${existingMessage.id}" vs new messageId="$messageId"');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - Found existing user message to update: key="$existingKey"',
+      );
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - MESSAGE ID MISMATCH CHECK: existing.id="${existingMessage.id}" vs new messageId="$messageId"',
+      );
       final updated = existingMessage.copyWith(
         content: transcript ?? existingMessage.content,
         status:
             markCompleted ? MessageStatus.completed : MessageStatus.streaming,
       );
 
-      log('VoiceAssistantRepository - Updating user message: old content="${existingMessage.content}" -> new content="${updated.content}", status=${updated.status.name}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - Updating user message: old content="${existingMessage.content}" -> new content="${updated.content}", status=${updated.status.name}',
+      );
 
       final index = _messages.indexWhere((m) => m.id == existingMessage!.id);
       if (index != -1) {
         _messages[index] = updated;
-        log('VoiceAssistantRepository - Updated user message at index $index');
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Updated user message at index $index',
+        );
         _messagesController.add(updated);
-        log('VoiceAssistantRepository - Emitted updated user message to stream');
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Emitted updated user message to stream',
+        );
       } else {
-        log('VoiceAssistantRepository - Warning: Could not find user message in _messages list for update');
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Warning: Could not find user message in _messages list for update',
+        );
       }
 
       if (markCompleted) {
         _inProgressUserMessages.remove(existingKey);
-        log('VoiceAssistantRepository - Removed completed user message from _inProgressUserMessages');
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Removed completed user message from _inProgressUserMessages',
+        );
       } else {
         _inProgressUserMessages[existingKey] = updated;
-        log('VoiceAssistantRepository - Updated user message in _inProgressUserMessages');
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Updated user message in _inProgressUserMessages',
+        );
       }
     } else if (!markCompleted) {
       // Create new user message from API event (for voice input without pre-existing text)
-      log('VoiceAssistantRepository - VOICE MESSAGE CREATION: No existing user message found, creating new voice message from API transcript');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - VOICE MESSAGE CREATION: No existing user message found, creating new voice message from API transcript',
+      );
       final message = ChatMessage(
         id: messageId,
         content: transcriptText,
@@ -419,18 +567,36 @@ class VoiceAssistantRepository implements IChatRepository {
         status: MessageStatus.streaming,
       );
 
-      log('VoiceAssistantRepository - VOICE MESSAGE CREATED: id=$messageId, content="$transcriptText", status=${message.status.name} at ${DateTime.now().toIso8601String()}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - VOICE MESSAGE CREATED: id=$messageId, content="$transcriptText", status=${message.status.name} at ${DateTime.now().toIso8601String()}',
+      );
       _messages.add(message);
-      log('VoiceAssistantRepository - VOICE MESSAGE ADDED TO _messages: index=${_messages.length - 1}, total messages=${_messages.length}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - VOICE MESSAGE ADDED TO _messages: index=${_messages.length - 1}, total messages=${_messages.length}',
+      );
 
-      log('VoiceAssistantRepository - VOICE MESSAGE STREAM EMIT: About to emit to _messagesController at ${DateTime.now().toIso8601String()}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - VOICE MESSAGE STREAM EMIT: About to emit to _messagesController at ${DateTime.now().toIso8601String()}',
+      );
       _messagesController.add(message);
-      log('VoiceAssistantRepository - VOICE MESSAGE STREAM EMITTED: Message sent to stream, controller closed=${_messagesController.isClosed}');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - VOICE MESSAGE STREAM EMITTED: Message sent to stream, controller closed=${_messagesController.isClosed}',
+      );
 
       _inProgressUserMessages[transcriptText] = message;
-      log('VoiceAssistantRepository - Stored new user message in _inProgressUserMessages with key="$transcriptText"');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - Stored new user message in _inProgressUserMessages with key="$transcriptText"',
+      );
     } else {
-      log('VoiceAssistantRepository - No existing user message found and markCompleted=true, skipping message creation');
+      _repoDebug(
+        _repoUserMessage,
+        'VoiceAssistantRepository - No existing user message found and markCompleted=true, skipping message creation',
+      );
     }
   }
 
@@ -451,7 +617,10 @@ class VoiceAssistantRepository implements IChatRepository {
   }
 
   void dispose() {
-    log('VoiceAssistantRepository - Disposing resources');
+    _repoDebug(
+      _repoLifecycle,
+      'VoiceAssistantRepository - Disposing resources',
+    );
     _messagesController.close();
     _inProgressMessages.clear();
     _inProgressUserMessages.clear();

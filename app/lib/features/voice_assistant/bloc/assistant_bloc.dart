@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
+
 import '../../chat/bloc/chat_bloc.dart';
 import '../../audio/services/stream_timeline.dart';
 import '../../meditation/services/audio_service.dart';
@@ -19,6 +20,30 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
 
   Timer? _recordingTimer;
   StreamSubscription<Uint8List>? _micStreamSubscription;
+
+  static const _domain = 'Voice Assistant';
+  static const _featureRecording = 'AssistantBloc Recording';
+  static const _featureStreaming = 'AssistantBloc Streaming';
+  static const _featureMode = 'AssistantBloc Mode';
+  static const _featureResponse = 'AssistantBloc Response';
+
+  void _debug(String feature, String message) {
+    logDebug(
+      message,
+      domain: _domain,
+      feature: feature,
+      context: AssistantBloc,
+    );
+  }
+
+  void _info(String feature, String message) {
+    logInfo(
+      message,
+      domain: _domain,
+      feature: feature,
+      context: AssistantBloc,
+    );
+  }
 
   AssistantBloc({
     required ChatBloc chatBloc,
@@ -69,26 +94,33 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StartRecordingUserAudioInput event,
     Emitter<AssistantState> emit,
   ) async {
-    log('Start recording requested; streaming=${state.streamingEnabled} canRecord=${state.canRecord}');
+    _debug(
+      _featureRecording,
+      'Start recording requested; streaming=${state.streamingEnabled} canRecord=${state.canRecord}',
+    );
     if (!state.canRecord) {
-      log('Start recording ignored because canRecord=false');
+      _debug(
+        _featureRecording,
+        'Start recording ignored because canRecord=false',
+      );
       return;
     }
 
     try {
       if (state.streamingEnabled) {
         final stream = _recorder.audioStream;
-        log('Starting streaming recorder');
+        _debug(_featureStreaming, 'Starting streaming recorder');
         await _recorder.startStreaming();
         await _micStreamSubscription?.cancel();
         _micStreamSubscription = stream.listen(
           (chunk) {
             if (chunk.isEmpty) return;
-            // log('Streaming chunk appended: ${chunk.length} bytes');
+            // _debug(_featureStreaming, 'Streaming chunk appended: ${chunk.length} bytes');
             unawaited(
               _client.appendInputAudio(chunk).catchError(
                 (error, stackTrace) {
                   add(ClientError('Failed to send audio: $error'));
+                  return false;
                 },
               ),
             );
@@ -98,7 +130,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
           },
         );
       } else {
-        log('Starting buffered recorder');
+        _debug(_featureRecording, 'Starting buffered recorder');
         await _recorder.startRecording();
       }
       emit(state.copyWith(
@@ -133,9 +165,9 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       if (state.streamingEnabled) {
         await _micStreamSubscription?.cancel();
         _micStreamSubscription = null;
-        log('Stopping streaming recorder');
+        _debug(_featureStreaming, 'Stopping streaming recorder');
         await _recorder.stopStreaming();
-        log('Requesting response after streaming');
+        _debug(_featureResponse, 'Requesting response after streaming');
         await _client.createResponse();
         emit(state.copyWith(
           userInput: UserInputState.idle,
@@ -143,7 +175,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
           recordingDuration: Duration.zero,
         ));
       } else {
-        log('Stopping buffered recorder');
+        _debug(_featureRecording, 'Stopping buffered recorder');
         final audioData = await _recorder.stopRecording();
         emit(state.copyWith(
           userInput: UserInputState.recorded,
@@ -190,7 +222,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ToggleStreamingMode event,
     Emitter<AssistantState> emit,
   ) {
-    log('Streaming mode set to ${event.enabled}');
+    _info(_featureMode, 'Streaming mode set to ${event.enabled}');
 
     final shouldStartStreaming = event.enabled &&
         state.canRecord &&
@@ -201,10 +233,10 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     emit(state.copyWith(streamingEnabled: event.enabled));
 
     if (shouldStartStreaming) {
-      log('Auto-starting streaming after toggle');
+      _debug(_featureStreaming, 'Auto-starting streaming after toggle');
       add(StartRecordingUserAudioInput());
     } else if (shouldStopStreaming) {
-      log('Auto-stopping streaming after toggle off');
+      _debug(_featureStreaming, 'Auto-stopping streaming after toggle off');
       add(StopRecordingUserAudioInput());
     }
   }
@@ -213,14 +245,14 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ServerVadSpeechStarted event,
     Emitter<AssistantState> emit,
   ) {
-    log('Server VAD detected speech start');
+    _debug(_featureStreaming, 'Server VAD detected speech start');
   }
 
   void _onServerVadSpeechStopped(
     ServerVadSpeechStopped event,
     Emitter<AssistantState> emit,
   ) {
-    log('Server VAD detected speech stop');
+    _debug(_featureStreaming, 'Server VAD detected speech stop');
     if (state.streamingEnabled && state.userInput == UserInputState.recording) {
       add(StopRecordingUserAudioInput());
     }
@@ -230,7 +262,10 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     SendRecordedAudio event,
     Emitter<AssistantState> emit,
   ) async {
-    log('Sending recorded audio: ${state.recordedAudio?.length} bytes');
+    _debug(
+      _featureResponse,
+      'Sending recorded audio: ${state.recordedAudio?.length} bytes',
+    );
     if (!state.canSendRecording) return;
 
     try {

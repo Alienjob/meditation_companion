@@ -1,6 +1,6 @@
-import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
 import '../bloc/chat_state.dart';
@@ -14,8 +14,11 @@ class ChatWidget extends StatelessWidget {
     return BlocBuilder<ChatBloc, ChatState>(
       builder: (context, state) {
         // LOG UI STATE CHANGES
-        dev.log(
-            '[ChatWidget] UI REBUILD: State changed to ${state.runtimeType} at ${DateTime.now().toIso8601String()}');
+        logDebug(
+          '[ChatWidget] UI REBUILD: State changed to ${state.runtimeType} at ${DateTime.now().toIso8601String()}',
+          domain: 'Chat',
+          feature: 'Chat Widget UI',
+        );
         return Column(
           children: [
             Expanded(
@@ -39,12 +42,18 @@ class ChatWidget extends StatelessWidget {
     };
 
     // LOG UI MESSAGES
-    dev.log(
-        '[ChatWidget] UI RENDER: About to render ${messages.length} messages at ${DateTime.now().toIso8601String()}');
+    logDebug(
+      '[ChatWidget] UI RENDER: About to render ${messages.length} messages at ${DateTime.now().toIso8601String()}',
+      domain: 'Chat',
+      feature: 'Chat Widget UI',
+    );
     for (int i = 0; i < messages.length; i++) {
       final msg = messages[i];
-      dev.log(
-          '[ChatWidget] UI RENDER: Index $i - id=${msg.id}, isUser=${msg.isUser}, content="${msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content}", status=${msg.status.name}');
+      logDebug(
+        '[ChatWidget] UI RENDER: Index $i - id=${msg.id}, isUser=${msg.isUser}, content="${msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content}", status=${msg.status.name}',
+        domain: 'Chat',
+        feature: 'Chat Widget UI',
+      );
     }
 
     return ListView.builder(

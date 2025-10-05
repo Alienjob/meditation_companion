@@ -1,9 +1,10 @@
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_state.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_event.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
+
 import '../../chat/bloc/chat_bloc.dart';
 import '../../chat/bloc/chat_event.dart';
 import '../../chat/models/chat_message.dart';
@@ -13,6 +14,28 @@ import '../../voice_assistant/repository/voice_assistant_repository.dart';
 import '../../voice_assistant/services/audio_recorder.dart';
 import '../../voice_assistant/voice_assistant_widget.dart';
 import '../services/audio_service.dart';
+
+const _chatAssistantDomain = 'Chat';
+const _chatAssistantLifecycle = 'Chat Assistant Widget Lifecycle';
+const _chatAssistantState = 'Chat Assistant State';
+const _chatAssistantOpenAi = 'Chat Assistant OpenAI';
+
+void _chatAssistantDebug(String feature, String message) {
+  logDebug(
+    message,
+    domain: _chatAssistantDomain,
+    feature: feature,
+  );
+}
+
+void _chatAssistantError(String feature, String message, {Object? error}) {
+  logError(
+    message,
+    domain: _chatAssistantDomain,
+    feature: feature,
+    error: error,
+  );
+}
 
 String _clipLogText(String value) {
   if (value.isEmpty) return '<empty>';
@@ -116,15 +139,27 @@ class ChatAssistantWidget extends StatelessWidget {
 
     return BlocProvider(
       create: (context) {
-        log('ChatAssistantWidget - Creating ChatBloc with VoiceAssistantRepository at ${DateTime.now().toIso8601String()}');
+        _chatAssistantDebug(
+          _chatAssistantLifecycle,
+          'ChatAssistantWidget - Creating ChatBloc with VoiceAssistantRepository at ${DateTime.now().toIso8601String()}',
+        );
         final chatBloc = ChatBloc(repository);
-        log('ChatAssistantWidget - ChatBloc created, sending ChatStreamConnected event');
+        _chatAssistantDebug(
+          _chatAssistantLifecycle,
+          'ChatAssistantWidget - ChatBloc created, sending ChatStreamConnected event',
+        );
         chatBloc.add(ChatStreamConnected());
 
         bool welcomeMessageAdded = false;
-        log('ChatAssistantWidget - Setting up ChatBloc stream listener');
+        _chatAssistantDebug(
+          _chatAssistantLifecycle,
+          'ChatAssistantWidget - Setting up ChatBloc stream listener',
+        );
         chatBloc.stream.listen((state) {
-          log('ChatAssistantWidget - ChatBloc state changed: ${state.runtimeType} at ${DateTime.now().toIso8601String()}');
+          _chatAssistantDebug(
+            _chatAssistantState,
+            'ChatAssistantWidget - ChatBloc state changed: ${state.runtimeType} at ${DateTime.now().toIso8601String()}',
+          );
           // LOG STATE CONTENT
           final messageCount = switch (state) {
             ChatConnected(messages: final msgs) => msgs.length,
@@ -134,9 +169,15 @@ class ChatAssistantWidget extends StatelessWidget {
             ChatFailure(messages: final msgs) => msgs.length,
             _ => 0,
           };
-          log('ChatAssistantWidget - State contains $messageCount messages');
+          _chatAssistantDebug(
+            _chatAssistantState,
+            'ChatAssistantWidget - State contains $messageCount messages',
+          );
           if (state is ChatConnected && !welcomeMessageAdded) {
-            log('ChatAssistantWidget - Adding welcome message');
+            _chatAssistantDebug(
+              _chatAssistantState,
+              'ChatAssistantWidget - Adding welcome message',
+            );
             final welcomeMessage = ChatMessage(
               id: 'welcome-${DateTime.now().millisecondsSinceEpoch}',
               content:
@@ -147,11 +188,17 @@ class ChatAssistantWidget extends StatelessWidget {
             );
             chatBloc.add(ChatMessageReceived(welcomeMessage));
             welcomeMessageAdded = true;
-            log('ChatAssistantWidget - Welcome message added');
+            _chatAssistantDebug(
+              _chatAssistantState,
+              'ChatAssistantWidget - Welcome message added',
+            );
           }
         });
 
-        log('ChatAssistantWidget - ChatBloc setup completed');
+        _chatAssistantDebug(
+          _chatAssistantLifecycle,
+          'ChatAssistantWidget - ChatBloc setup completed',
+        );
         return chatBloc;
       },
       child: Builder(
@@ -166,7 +213,7 @@ class ChatAssistantWidget extends StatelessWidget {
             );
 
             client.on(RealtimeEventType.all, (event) {
-              // log('Received OpenAI event: ${event.type}');
+              // logDebug('Received OpenAI event: ${event.type}');
             });
 
             client.on(RealtimeEventType.conversationUpdated, (event) {
@@ -184,9 +231,9 @@ class ChatAssistantWidget extends StatelessWidget {
                     conversationItem.formatted?.audio,
                   );
                   if (audioChunk != null && audioChunk.isNotEmpty) {
-                    log(
-                      'OpenAI audio chunk received: item='
-                      '${message.id} chunkBytes=${audioChunk.length}',
+                    _chatAssistantDebug(
+                      _chatAssistantOpenAi,
+                      'OpenAI audio chunk received: item=${message.id} chunkBytes=${audioChunk.length}',
                     );
                     assistantBloc.add(
                       ResponseAudioReceived(
@@ -216,59 +263,68 @@ class ChatAssistantWidget extends StatelessWidget {
 
             client.on(RealtimeEventType.responseOutputItemAdded, (event) {
               final typedEvent = event as RealtimeEventResponseOutputItemAdded;
-              log(
-                'OpenAI response output item added: '
-                '${_describeItem(typedEvent.item)} '
-                'response=${typedEvent.responseId} '
-                'outputIndex=${typedEvent.outputIndex}',
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI response output item added: ${_describeItem(typedEvent.item)} response=${typedEvent.responseId} outputIndex=${typedEvent.outputIndex}',
               );
             });
 
             client.on(RealtimeEventType.responseContentPartAdded, (event) {
               final typedEvent = event as RealtimeEventResponseContentPartAdded;
-              log(
-                'OpenAI response content part added: '
-                '${_describeContentPart(typedEvent.part)} '
-                'response=${typedEvent.responseId} '
-                'item=${typedEvent.itemId}',
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI response content part added: ${_describeContentPart(typedEvent.part)} response=${typedEvent.responseId} item=${typedEvent.itemId}',
               );
             });
 
             client.on(RealtimeEventType.responseTextDelta, (event) {
               final typedEvent = event as RealtimeEventResponseTextDelta;
               repository.handleResponseTextDelta(typedEvent);
-              log(
-                'OpenAI response text delta: '
-                'item=${typedEvent.itemId} deltaLen=${typedEvent.delta.length}',
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI response text delta: item=${typedEvent.itemId} deltaLen=${typedEvent.delta.length}',
               );
             });
 
             client.on(RealtimeEventType.responseTextDone, (event) {
               final typedEvent = event as RealtimeEventResponseTextDone;
               repository.handleResponseTextDone(typedEvent);
-              log(
-                'OpenAI response text done: '
-                'item=${typedEvent.itemId} textLen=${typedEvent.text.length}',
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI response text done: item=${typedEvent.itemId} textLen=${typedEvent.text.length}',
               );
             });
 
             client.on(RealtimeEventType.inputAudioBufferSpeechStarted, (event) {
-              log('OpenAI VAD speech started');
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI VAD speech started',
+              );
               assistantBloc.add(ServerVadSpeechStarted());
             });
 
             client.on(RealtimeEventType.inputAudioBufferSpeechStopped, (event) {
-              log('OpenAI VAD speech stopped');
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI VAD speech stopped',
+              );
               assistantBloc.add(ServerVadSpeechStopped());
             });
 
             client.on(RealtimeEventType.error, (event) {
               final typedEvent = event as RealtimeEventError;
-              log('OpenAI Realtime error: ${typedEvent.error}');
+              _chatAssistantError(
+                _chatAssistantOpenAi,
+                'OpenAI Realtime error: ${typedEvent.error}',
+                error: typedEvent.error,
+              );
             });
 
             client.on(RealtimeEventType.close, (event) {
-              log('OpenAI Realtime closed, attempting to reconnect...');
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'OpenAI Realtime closed, attempting to reconnect...',
+              );
               Future.delayed(const Duration(seconds: 1), () {
                 if (!client.isConnected()) {
                   client.connect();
@@ -277,7 +333,10 @@ class ChatAssistantWidget extends StatelessWidget {
             });
 
             client.connect().then((_) {
-              log('Connected to OpenAI Realtime: ${client.isConnected()}');
+              _chatAssistantDebug(
+                _chatAssistantOpenAi,
+                'Connected to OpenAI Realtime: ${client.isConnected()}',
+              );
               assistantBloc.add(ClientConnected());
             });
 

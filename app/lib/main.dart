@@ -17,6 +17,7 @@ import 'package:meditation_companion/features/voice_assistant/services/real_audi
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:record/record.dart' as record_pkg;
+import 'package:meditation_companion/core/logging/app_logger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,10 +54,20 @@ Future<void> _ensureMicrophonePermission() async {
   try {
     final hasPermission = await record.hasPermission();
     if (!hasPermission) {
-      debugPrint('Microphone permission denied at startup.');
+      logWarning(
+        'Microphone permission denied at startup.',
+        domain: 'App',
+        feature: 'Permissions',
+      );
     }
   } catch (error, stackTrace) {
-    debugPrint('Failed to verify microphone permission: $error');
+    logError(
+      'Failed to verify microphone permission',
+      error: error,
+      stackTrace: stackTrace,
+      domain: 'App',
+      feature: 'Permissions',
+    );
     FlutterError.reportError(FlutterErrorDetails(
       exception: error,
       stack: stackTrace,

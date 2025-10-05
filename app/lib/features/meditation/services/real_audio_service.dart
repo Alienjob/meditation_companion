@@ -18,8 +18,7 @@ class RealAudioService implements AudioService {
   SoundHandle? _voiceHandle;
   String? _currentVoiceItemId;
   bool _voiceStreamEnded = false;
-  final _voiceStateController =
-      StreamController<VoiceStreamState>.broadcast();
+  final _voiceStateController = StreamController<VoiceStreamState>.broadcast();
 
   @override
   Stream<Map<String, AmbientSoundSettings>> get soundSettingsStream =>
@@ -35,8 +34,7 @@ class RealAudioService implements AudioService {
   }
 
   @override
-  Stream<VoiceStreamState> get voiceStreamState =>
-      _voiceStateController.stream;
+  Stream<VoiceStreamState> get voiceStreamState => _voiceStateController.stream;
 
   Future<void> _initialize() async {
     try {
@@ -212,8 +210,7 @@ class RealAudioService implements AudioService {
       rethrow;
     }
 
-    if (_voiceHandle == null ||
-        !_soloud.getIsValidVoiceHandle(_voiceHandle!)) {
+    if (_voiceHandle == null || !_soloud.getIsValidVoiceHandle(_voiceHandle!)) {
       _voiceHandle = await _soloud.play(_voiceStream!, volume: 1);
     }
 
@@ -260,8 +257,7 @@ class RealAudioService implements AudioService {
   }
 
   Future<void> _stopVoiceHandle() async {
-    if (_voiceHandle != null &&
-        _soloud.getIsValidVoiceHandle(_voiceHandle!)) {
+    if (_voiceHandle != null && _soloud.getIsValidVoiceHandle(_voiceHandle!)) {
       try {
         await _soloud.stop(_voiceHandle!);
       } catch (_) {}
