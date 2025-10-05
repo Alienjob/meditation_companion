@@ -4,6 +4,7 @@ import 'package:meditation_companion/config/env_config.dart';
 import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:meditation_companion/features/chat/bloc/chat_state.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_event.dart';
+import 'package:meditation_companion/features/voice_assistant/tools/voice_assistant_tools.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 
 import '../../chat/bloc/chat_bloc.dart';
@@ -124,9 +125,15 @@ class ChatAssistantWidget extends StatelessWidget {
       dangerouslyAllowAPIKeyInBrowser: true,
     );
 
+    final toolset = VoiceAssistantToolset(context: context);
+
+    final instructions = [
+      'You are a friendly meditation assistant. Help users with meditation and mindfulness. Respond in English only and keep each reply within 10 words.',
+      toolset.buildInstructionSuffix(),
+    ].join('\n\n');
+
     client.updateSession(
-      instructions:
-          'You are a friendly meditation assistant. Help users with meditation and mindfulness. Respond in English only and keep each reply within 10 words.',
+      instructions: instructions,
       voice: Voice.alloy,
       turnDetection: TurnDetection(
         type: TurnDetectionType.serverVad,
@@ -339,22 +346,24 @@ class ChatAssistantWidget extends StatelessWidget {
               );
               Future.delayed(const Duration(seconds: 1), () {
                 if (!client.isConnected()) {
-                  client.connect();
+                  client.connect(model: EnvConfig.openAiRealtimeModel);
                 }
               });
             });
 
-            client.connect(model: EnvConfig.openAiRealtimeModel).then((_) {
-              _chatAssistantDebug(
-                _chatAssistantOpenAi,
-                'Connected to OpenAI Realtime using model: ${EnvConfig.openAiRealtimeModel} (connected=${client.isConnected()})',
-              );
-              logInfo(
-                'Realtime client connected with model: ${EnvConfig.openAiRealtimeModel}',
-                domain: 'App',
-                feature: 'Realtime',
-              );
-              assistantBloc.add(ClientConnected());
+            toolset.register(client).then((_) {
+              client.connect(model: EnvConfig.openAiRealtimeModel).then((_) {
+                _chatAssistantDebug(
+                  _chatAssistantOpenAi,
+                  'Connected to OpenAI Realtime using model: ${EnvConfig.openAiRealtimeModel} (connected=${client.isConnected()})',
+                );
+                logInfo(
+                  'Realtime client connected with model: ${EnvConfig.openAiRealtimeModel}',
+                  domain: 'App',
+                  feature: 'Realtime',
+                );
+                assistantBloc.add(ClientConnected());
+              });
             });
 
             return assistantBloc;
