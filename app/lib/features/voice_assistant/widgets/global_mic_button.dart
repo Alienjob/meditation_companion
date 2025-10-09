@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -38,10 +39,10 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
     super.dispose();
   }
 
-  Future<void> _startHold() async {
+  Future<void> _startHold(AssistantState currentState) async {
     if (_isHolding) return;
     final assistantBloc = context.read<AssistantBloc>();
-    AssistantState assistantState = assistantBloc.state;
+    AssistantState assistantState = currentState;
 
     if (!assistantState.canRecord) {
       if (assistantState.canInterrupt) {
@@ -63,10 +64,6 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
       }
     }
 
-    if (assistantState.streamingEnabled) {
-      assistantBloc.add(const ToggleStreamingMode(false));
-    }
-
     assistantBloc.add(StartRecordingUserAudioInput());
     setState(() {
       _isHolding = true;
@@ -75,26 +72,37 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
     });
   }
 
-  void _requestStreaming() {
-    if (_streamingRequested) return;
+  void _requestStreaming(AssistantState assistantState) {
+    if (_streamingRequested || assistantState.streamingEnabled) return;
     _streamingRequested = true;
     context.read<AssistantBloc>().add(const ToggleStreamingMode(true));
     setState(() {});
   }
 
-  void _handlePanUpdate(DragUpdateDetails details) {
+  void _handlePanUpdate(
+    DragUpdateDetails details,
+    AssistantState assistantState,
+  ) {
     if (!_isHolding) return;
     _dragOffset += details.delta.dy;
-    if (!_streamingRequested && _dragOffset <= -48) {
-      _requestStreaming();
+    if (!_streamingRequested && _dragOffset <= -36) {
+      _requestStreaming(assistantState);
     }
   }
 
-  void _finishHold() {
-    if (!_isHolding) return;
+  void _onPanStart(AssistantState assistantState) {
+    if (assistantState.streamingEnabled) {
+      return;
+    }
+    unawaited(_startHold(assistantState));
+  }
+
+  void _stopStreaming(AssistantState assistantState) {
     final assistantBloc = context.read<AssistantBloc>();
-    assistantBloc.add(StopRecordingUserAudioInput());
-    if (_streamingRequested || assistantBloc.state.streamingEnabled) {
+    if (assistantState.userInput == UserInputState.recording) {
+      assistantBloc.add(StopRecordingUserAudioInput());
+    }
+    if (assistantState.streamingEnabled) {
       Future.microtask(() {
         assistantBloc.add(const ToggleStreamingMode(false));
       });
@@ -106,18 +114,53 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
     });
   }
 
-  void _cancelHold() {
+  void _finishHold(AssistantState assistantState) {
     if (!_isHolding) return;
+    if (assistantState.streamingEnabled || _streamingRequested) {
+      setState(() {
+        _isHolding = false;
+        _streamingRequested =
+            _streamingRequested || assistantState.streamingEnabled;
+        _dragOffset = 0;
+      });
+      return;
+    }
+
     final assistantBloc = context.read<AssistantBloc>();
     assistantBloc.add(StopRecordingUserAudioInput());
-    if (_streamingRequested || assistantBloc.state.streamingEnabled) {
-      assistantBloc.add(const ToggleStreamingMode(false));
-    }
     setState(() {
       _isHolding = false;
       _streamingRequested = false;
       _dragOffset = 0;
     });
+  }
+
+  void _cancelHold(AssistantState assistantState) {
+    if (!_isHolding) return;
+    if (assistantState.streamingEnabled || _streamingRequested) {
+      _stopStreaming(assistantState);
+      return;
+    }
+
+    final assistantBloc = context.read<AssistantBloc>();
+    assistantBloc.add(StopRecordingUserAudioInput());
+    setState(() {
+      _isHolding = false;
+      _streamingRequested = false;
+      _dragOffset = 0;
+    });
+  }
+
+  Future<void> _handleTapDown(AssistantState assistantState) async {
+    if (!_isHolding && assistantState.streamingEnabled) {
+      _stopStreaming(assistantState);
+      return;
+    }
+    await _startHold(assistantState);
+  }
+
+  void _handleTapUp(AssistantState assistantState) {
+    _finishHold(assistantState);
   }
 
   @override
@@ -192,12 +235,14 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
-                  onTapDown: (_) => _startHold(),
-                  onTapUp: (_) => _finishHold(),
-                  onTapCancel: _cancelHold,
-                  onPanStart: (_) => _startHold(),
-                  onPanUpdate: _handlePanUpdate,
-                  onPanEnd: (_) => _finishHold(),
+                  dragStartBehavior: DragStartBehavior.down,
+                  onTapDown: (_) => _handleTapDown(assistantState),
+                  onTapUp: (_) => _handleTapUp(assistantState),
+                  onTapCancel: () => _cancelHold(assistantState),
+                  onVerticalDragStart: (_) => _onPanStart(assistantState),
+                  onVerticalDragUpdate: (details) =>
+                      _handlePanUpdate(details, assistantState),
+                  onVerticalDragEnd: (_) => _finishHold(assistantState),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -266,6 +311,30 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
+                if (!assistantState.streamingEnabled)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      'Hold to record · Swipe up for streaming',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (assistantState.streamingEnabled)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      'Tap mic to stop streaming',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
               ],
             );
           },
@@ -331,7 +400,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
       case AudioRecorderStatus.preparingStreaming:
         return ('Starting stream…', 'Release to send');
       case AudioRecorderStatus.streamingActive:
-        return ('Streaming live…', 'Release to finish');
+        return ('Streaming live…', 'Tap mic to stop');
       case AudioRecorderStatus.finalizingStreaming:
         return ('Wrapping up stream…', null);
       case AudioRecorderStatus.error:
