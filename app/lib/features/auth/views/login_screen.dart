@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
@@ -16,6 +17,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSignUp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kDebugMode) {
+      _emailController.text = 'igor.pashutin.georgia@gmail.com';
+    }
+  }
 
   @override
   void dispose() {

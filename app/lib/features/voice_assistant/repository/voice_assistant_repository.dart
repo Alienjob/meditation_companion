@@ -502,25 +502,9 @@ class VoiceAssistantRepository implements IChatRepository {
       }
     }
 
-    if (existingMessage == null && _inProgressUserMessages.isNotEmpty) {
-      final fallbackEntry = _inProgressUserMessages.entries.first;
-      final fallbackMessage = fallbackEntry.value;
-      existingMessage = fallbackMessage;
-      matchedContentKey ??= fallbackEntry.key;
-      existingIndex = _messages.indexWhere((m) => m.id == fallbackMessage.id);
-    }
-
     final String contentToUse = effectiveCandidateText ?? '[voice message]';
 
     if (existingMessage == null) {
-      if (!hasCandidateText) {
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - No candidate text available; deferring user message creation for item=$messageId',
-        );
-        return;
-      }
-
       final newMessage = ChatMessage(
         id: messageId,
         content: contentToUse,
@@ -536,13 +520,27 @@ class VoiceAssistantRepository implements IChatRepository {
       _inProgressUserMessagesByConversationId[messageId] = newMessage;
       if (effectiveCandidateText != null) {
         _inProgressUserMessages[effectiveCandidateText] = newMessage;
+      } else {
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - Created placeholder user message for streaming item=$messageId',
+        );
       }
       return;
     }
 
+    final updatedContent = hasCandidateText
+        ? contentToUse
+        : (existingMessage.content.isEmpty
+            ? contentToUse
+            : existingMessage.content);
+
+    final shouldComplete = markCompleted && hasCandidateText;
+
     final updated = existingMessage.copyWith(
-      content: hasCandidateText ? contentToUse : existingMessage.content,
-      status: markCompleted ? MessageStatus.completed : MessageStatus.streaming,
+      content: updatedContent,
+      status:
+          shouldComplete ? MessageStatus.completed : MessageStatus.streaming,
     );
 
     if (existingIndex != -1) {
@@ -563,7 +561,7 @@ class VoiceAssistantRepository implements IChatRepository {
       _inProgressUserMessages[effectiveCandidateText] = updated;
     }
 
-    if (markCompleted) {
+    if (shouldComplete) {
       _inProgressUserMessagesByConversationId.remove(messageId);
       _inProgressUserMessages
           .removeWhere((key, value) => value.id == updated.id);

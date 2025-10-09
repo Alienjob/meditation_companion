@@ -123,6 +123,10 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
     final repository = _repository!;
     final assistantBloc = _assistantBloc!;
 
+    _client.on(RealtimeEventType.all, (event) {
+      print('Realtime event: ${event.type}');
+    });
+
     _client.on(RealtimeEventType.conversationUpdated, (event) {
       final typedEvent = event as RealtimeEventConversationUpdated;
       repository.handleConversationUpdated(typedEvent);

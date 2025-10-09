@@ -7,7 +7,6 @@
             "request": "launch",
             "type": "dart",
             "args": [
-                "--dart-define=LOG_TAGS=auth:*,meditation:*,voice_assistant:*,chat:*,app:*",
                 "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
                 "--dart-define=OPENAI_API_KEY=${input:openApiKey}",

@@ -398,23 +398,22 @@ class _TagPattern {
 
 class _LogSettings {
   static final bool _releaseMode = kReleaseMode;
-  static final List<_TagPattern> _patterns = _parsePatterns(
-    const String.fromEnvironment('LOG_TAGS', defaultValue: '*:*'),
+  static final List<_TagPattern> _suppressedPatterns = _parsePatterns(
+    const String.fromEnvironment('LOG_TAGS', defaultValue: ''),
   );
 
   static bool isEnabled(LogTags tags) {
     if (_releaseMode) return false;
-    if (_patterns.isEmpty) return false;
-    return _patterns.any((pattern) => pattern.matches(tags));
+    if (_suppressedPatterns.isEmpty) return true;
+    final suppressed =
+        _suppressedPatterns.any((pattern) => pattern.matches(tags));
+    return !suppressed;
   }
 
   static List<_TagPattern> _parsePatterns(String raw) {
     final trimmed = raw.trim().toLowerCase();
     if (trimmed.isEmpty || trimmed == 'none' || trimmed == 'off') {
       return const <_TagPattern>[];
-    }
-    if (trimmed == '*' || trimmed == 'all' || trimmed == 'any') {
-      return [_TagPattern(domain: '*', feature: '*')];
     }
 
     final cleaned = trimmed
@@ -444,7 +443,7 @@ class _LogSettings {
   }
 
   static Set<String> get activeTags =>
-      _patterns.map((pattern) => pattern.toString()).toSet();
+      _suppressedPatterns.map((pattern) => pattern.toString()).toSet();
 }
 
 void logDebug(

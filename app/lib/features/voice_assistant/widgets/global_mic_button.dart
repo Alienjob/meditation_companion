@@ -155,7 +155,8 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
                         AudioRecorderStatus.preparingStreaming ||
                     recorderState.status ==
                         AudioRecorderStatus.finalizingStreaming ||
-                    assistantState.userInput == UserInputState.recorded;
+                    assistantState.userInput == UserInputState.recorded ||
+                    assistantState.responseState == ResponseState.responding;
             final showRipple =
                 recorderState.status == AudioRecorderStatus.streamingActive;
 
@@ -300,7 +301,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
     if (!assistantState.canRecord &&
         assistantState.userInput != UserInputState.recording) {
       if (assistantState.responseState == ResponseState.responding) {
-        return ('Assistant speaking…', 'Wait for response to finish');
+        return ('Assistant processing…', 'Wait for response to finish');
       }
       switch (assistantState.clientStatus) {
         case ClientStatus.connecting:
