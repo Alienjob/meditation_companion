@@ -1,3 +1,4 @@
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import '../models/user_model.dart';
 import 'auth_repository.dart';
@@ -5,6 +6,42 @@ import '../exceptions/auth_exception.dart';
 
 class SupabaseAuthRepository implements AuthRepository {
   final supabase.SupabaseClient _supabase;
+
+  static const _domain = 'Auth';
+  static const _featureRepository = 'Supabase Auth';
+
+  void _debug(String message) {
+    logDebug(
+      message,
+      domain: _domain,
+      feature: _featureRepository,
+      context: SupabaseAuthRepository,
+    );
+  }
+
+  void _info(String message) {
+    logInfo(
+      message,
+      domain: _domain,
+      feature: _featureRepository,
+      context: SupabaseAuthRepository,
+    );
+  }
+
+  Never _rethrow(String message, Object error, StackTrace stackTrace) {
+    logError(
+      message,
+      domain: _domain,
+      feature: _featureRepository,
+      error: error,
+      stackTrace: stackTrace,
+      context: SupabaseAuthRepository,
+    );
+    if (error is AuthException) {
+      throw error;
+    }
+    throw AuthException(message: message);
+  }
 
   SupabaseAuthRepository(this._supabase);
 
@@ -27,6 +64,7 @@ class SupabaseAuthRepository implements AuthRepository {
     required String password,
   }) async {
     try {
+      _info('Supabase sign-in started for $email');
       final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
@@ -35,9 +73,10 @@ class SupabaseAuthRepository implements AuthRepository {
       if (supabaseUser == null) {
         throw const AuthException(message: 'Sign in failed: No user returned');
       }
+      _info('Supabase sign-in succeeded for $email');
       return _mapSupabaseUser(supabaseUser);
-    } catch (error) {
-      throw AuthException(message: 'Sign in failed: ${error.toString()}');
+    } catch (error, stackTrace) {
+      _rethrow('Sign in failed: ${error.toString()}', error, stackTrace);
     }
   }
 
@@ -47,6 +86,7 @@ class SupabaseAuthRepository implements AuthRepository {
     required String password,
   }) async {
     try {
+      _info('Supabase sign-up started for $email');
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -55,28 +95,36 @@ class SupabaseAuthRepository implements AuthRepository {
       if (supabaseUser == null) {
         throw const AuthException(message: 'Sign up failed: No user returned');
       }
+      _info('Supabase sign-up succeeded for $email');
       return _mapSupabaseUser(supabaseUser);
-    } catch (error) {
-      throw AuthException(message: 'Sign up failed: ${error.toString()}');
+    } catch (error, stackTrace) {
+      _rethrow('Sign up failed: ${error.toString()}', error, stackTrace);
     }
   }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {
     try {
+      _info('Supabase password reset requested for $email');
       await _supabase.auth.resetPasswordForEmail(email);
-    } catch (error) {
-      throw AuthException(
-          message: 'Password reset failed: ${error.toString()}');
+      _info('Supabase password reset email dispatched for $email');
+    } catch (error, stackTrace) {
+      _rethrow(
+        'Password reset failed: ${error.toString()}',
+        error,
+        stackTrace,
+      );
     }
   }
 
   @override
   Future<void> signOut() async {
     try {
+      _info('Supabase sign-out started');
       await _supabase.auth.signOut();
-    } catch (error) {
-      throw AuthException(message: 'Sign out failed: ${error.toString()}');
+      _info('Supabase sign-out completed');
+    } catch (error, stackTrace) {
+      _rethrow('Sign out failed: ${error.toString()}', error, stackTrace);
     }
   }
 
@@ -85,8 +133,10 @@ class SupabaseAuthRepository implements AuthRepository {
     return _supabase.auth.onAuthStateChange.map((data) {
       final supabaseUser = data.session?.user;
       if (supabaseUser != null) {
+        _debug('Auth state change -> user=${supabaseUser.email ?? supabaseUser.id}');
         return _mapSupabaseUser(supabaseUser);
       }
+      _debug('Auth state change -> signed out');
       return null;
     });
   }
@@ -95,8 +145,10 @@ class SupabaseAuthRepository implements AuthRepository {
   User? get currentUser {
     final supabaseUser = _supabase.auth.currentUser;
     if (supabaseUser != null) {
+      _debug('currentUser resolved user=${supabaseUser.email ?? supabaseUser.id}');
       return _mapSupabaseUser(supabaseUser);
     }
+    _debug('currentUser resolved null');
     return null;
   }
 }

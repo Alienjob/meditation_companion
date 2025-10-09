@@ -51,6 +51,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 backgroundColor: Colors.red,
               ),
             );
+          } else if (state is PasswordResetEmailSent) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Password reset email sent to ${state.email}'),
+              ),
+            );
           }
         },
         child: SafeArea(
@@ -118,6 +124,28 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _isSignUp ? 'Sign Up' : 'Sign In',
                               ),
                             ),
+                          if (state is AuthError) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              state.message,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                          if (state is PasswordResetEmailSent) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Password reset email sent to ${state.email}',
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ],
                       );
                     },

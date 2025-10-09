@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
-import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_state.dart';
 import 'package:meditation_companion/features/auth/views/login_screen.dart';
+import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -21,63 +21,12 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // Show login screen if unauthenticated
-        if (state is Unauthenticated) {
-          return const LoginScreen();
-        }
-
-        // Show home screen if authenticated
         if (state is Authenticated) {
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Meditation Companion'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  onPressed: () {
-                    context.read<AuthBloc>().add(SignOutRequested());
-                  },
-                ),
-              ],
-            ),
-            body: const Center(
-              child: Text('Welcome! You are logged in.'),
-            ),
-          );
+          return const MeditationSessionScreen();
         }
 
-        // Show error state
-        if (state is AuthError) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    state.message,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      context.read<AuthBloc>().add(AuthCheckRequested());
-                    },
-                    child: const Text('Try Again'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        // Emit unauthenticated state for any unhandled states
-        context.read<AuthBloc>().add(AuthCheckRequested());
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
+        // Default to login screen for unauthenticated, error, or post-reset states
+        return const LoginScreen();
       },
     );
   }

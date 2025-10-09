@@ -6,12 +6,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/config/env_config.dart';
 import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
 import 'package:meditation_companion/features/analytics/services/supabase_analytics_service.dart';
+import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
+import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
+import 'package:meditation_companion/features/auth/repository/auth_repository.dart';
+import 'package:meditation_companion/features/auth/repository/supabase_auth_repository.dart';
+import 'package:meditation_companion/features/auth/views/auth_wrapper.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/real_audio_service.dart';
 import 'package:meditation_companion/features/meditation/services/real_timer_service.dart';
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
-import 'package:meditation_companion/features/meditation/views/meditation_session_screen.dart';
 import 'package:meditation_companion/features/voice_assistant/services/audio_recorder.dart';
 import 'package:meditation_companion/features/voice_assistant/services/real_audio_recorder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -98,6 +102,7 @@ class _MainAppState extends State<MainApp> {
   late final TimerService _timerService;
   late final AudioService _audioService;
   late final AudioRecorder _audioRecorder;
+  late final AuthRepository _authRepository;
 
   @override
   void initState() {
@@ -105,6 +110,7 @@ class _MainAppState extends State<MainApp> {
     _timerService = RealTimerService();
     _audioService = RealAudioService();
     _audioRecorder = RealAudioRecorder();
+    _authRepository = SupabaseAuthRepository(Supabase.instance.client);
   }
 
   @override
@@ -117,44 +123,48 @@ class _MainAppState extends State<MainApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Meditation Companion',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<TimerService>.value(value: _timerService),
+        RepositoryProvider<AudioService>.value(value: _audioService),
+        RepositoryProvider<AudioRecorder>.value(value: _audioRecorder),
+        RepositoryProvider<AnalyticsService>.value(
+          value: widget.analyticsService,
         ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: MultiRepositoryProvider(
+        RepositoryProvider<AuthRepository>.value(value: _authRepository),
+      ],
+      child: MultiBlocProvider(
         providers: [
-          RepositoryProvider<TimerService>(
-            create: (_) => _timerService,
+          BlocProvider<AuthBloc>(
+            create: (context) => AuthBloc(
+              authRepository: context.read<AuthRepository>(),
+            )..add(AuthCheckRequested()),
           ),
-          RepositoryProvider<AudioService>(
-            create: (_) => _audioService,
-          ),
-          RepositoryProvider<AudioRecorder>(
-            create: (_) => _audioRecorder,
-          ),
-          RepositoryProvider<AnalyticsService>(
-            create: (_) => widget.analyticsService,
+          BlocProvider<MeditationBloc>(
+            create: (context) => MeditationBloc(
+              timerService: context.read<TimerService>(),
+              audioService: context.read<AudioService>(),
+              analyticsService: context.read<AnalyticsService>(),
+            ),
           ),
         ],
-        child: BlocProvider(
-          create: (context) => MeditationBloc(
-            timerService: context.read<TimerService>(),
-            audioService: context.read<AudioService>(),
-            analyticsService: context.read<AnalyticsService>(),
+        child: MaterialApp(
+          title: 'Meditation Companion',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepPurple,
+              brightness: Brightness.light,
+            ),
+            useMaterial3: true,
           ),
-          child: const MeditationSessionScreen(),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepPurple,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          home: const AuthWrapper(),
         ),
       ),
     );

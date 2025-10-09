@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
+import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
 import '../widgets/meditation_content_widget.dart';
@@ -27,6 +29,12 @@ class MeditationSessionScreen extends StatelessWidget {
                   icon: const Icon(Icons.chat),
                   onPressed: () => ChatBottomSheetWidget.show(context),
                 ),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                tooltip: 'Sign out',
+                onPressed: () =>
+                    context.read<AuthBloc>().add(SignOutRequested()),
+              ),
             ],
           ),
           body: isWideScreen
