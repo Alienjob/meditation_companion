@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:meditation_companion/features/meditation/models/ambient_sound_settings.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 
 class RealAudioService implements AudioService {
+  static const _domain = 'Meditation Audio';
+  static const _featureVoice = 'RealAudioService VoiceStream';
+
   final Map<String, AmbientSoundSettings> _soundSettings = {};
   final _settingsController =
       StreamController<Map<String, AmbientSoundSettings>>.broadcast();
@@ -33,6 +37,15 @@ class RealAudioService implements AudioService {
     _voiceStateController.add(VoiceStreamState.idle);
   }
 
+  void _logVoice(String message) {
+    logDebug(
+      message,
+      domain: _domain,
+      feature: _featureVoice,
+      context: RealAudioService,
+    );
+  }
+
   @override
   Stream<VoiceStreamState> get voiceStreamState => _voiceStateController.stream;
 
@@ -43,6 +56,7 @@ class RealAudioService implements AudioService {
 
       await _loadSounds();
       _isInitialized = true;
+      _logVoice('[${DateTime.now().toIso8601String()}] SoLoud initialized');
     } on SoLoudNotInitializedException {
       print('Initialize SoLoud first');
     } on SoLoudFileLoadFailedException {
@@ -177,10 +191,16 @@ class RealAudioService implements AudioService {
     }
 
     if (_currentVoiceItemId != null && _currentVoiceItemId != itemId) {
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Switching stream from item=$_currentVoiceItemId to item=$itemId',
+      );
       await _resetVoiceStream();
     }
 
     if (_voiceStreamEnded && audioData.isNotEmpty) {
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Received new audio after end marker; resetting stream for item=$itemId',
+      );
       await _resetVoiceStream();
     }
 
@@ -192,26 +212,41 @@ class RealAudioService implements AudioService {
       }
       _voiceStreamEnded = true;
       _currentVoiceItemId = null;
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Received end of stream marker for item=$itemId',
+      );
       return;
     }
 
     try {
       _currentVoiceItemId ??= itemId;
       _soloud.addAudioDataStream(_voiceStream!, audioData);
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Buffered audio chunk for item=$itemId bytes=${audioData.length}',
+      );
     } on SoLoudStreamEndedAlreadyCppException {
       await _resetVoiceStream();
       await _ensureVoiceStream();
       _currentVoiceItemId = itemId;
       _soloud.addAudioDataStream(_voiceStream!, audioData);
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Recovered stream after SoLoudStreamEndedAlready for item=$itemId bytes=${audioData.length}',
+      );
     } catch (e) {
       if (!_voiceStateController.isClosed) {
         _voiceStateController.add(VoiceStreamState.error);
       }
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Error buffering audio for item=$itemId: $e',
+      );
       rethrow;
     }
 
     if (_voiceHandle == null || !_soloud.getIsValidVoiceHandle(_voiceHandle!)) {
       _voiceHandle = await _soloud.play(_voiceStream!, volume: 1);
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Started playback for item=$itemId handle=$_voiceHandle',
+      );
     }
 
     if (!_voiceStateController.isClosed) {
@@ -223,6 +258,7 @@ class RealAudioService implements AudioService {
   Future<void> stopVoice() async {
     if (!_isInitialized) return;
 
+    _logVoice('[${DateTime.now().toIso8601String()}] stopVoice requested');
     await _stopVoiceHandle();
     if (_voiceStream != null) {
       try {
@@ -254,24 +290,31 @@ class RealAudioService implements AudioService {
     );
     _voiceStreamEnded = false;
     _voiceStateController.add(VoiceStreamState.idle);
+    _logVoice(
+        '[${DateTime.now().toIso8601String()}] Voice buffer stream initialized');
   }
 
   Future<void> _stopVoiceHandle() async {
     if (_voiceHandle != null && _soloud.getIsValidVoiceHandle(_voiceHandle!)) {
       try {
         await _soloud.stop(_voiceHandle!);
+        _logVoice(
+            '[${DateTime.now().toIso8601String()}] SoLoud handle stopped');
       } catch (_) {}
     }
     _voiceHandle = null;
   }
 
   Future<void> _resetVoiceStream() async {
+    _logVoice('[${DateTime.now().toIso8601String()}] Resetting voice stream');
     await _stopVoiceHandle();
     if (_voiceStream != null) {
       try {
         _soloud.resetBufferStream(_voiceStream!);
         _soloud.setDataIsEnded(_voiceStream!);
         await _soloud.disposeSource(_voiceStream!);
+        _logVoice(
+            '[${DateTime.now().toIso8601String()}] Existing buffer disposed');
       } catch (_) {}
     }
     _voiceStream = null;

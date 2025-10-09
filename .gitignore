@@ -8,3 +8,6 @@ secrets/
 .Trashes
 ehthumbs.db
 Thumbs.db
+app/.dartServer/
+app/.dart-tool/
+logs.md

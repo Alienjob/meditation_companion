@@ -17,6 +17,9 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   final RealtimeClient _client;
   final StreamTimeline _positionTracker;
 
+  final Set<String> _responsesWithAudio = <String>{};
+  String? _activeResponseItemId;
+
   Timer? _recordingTimer;
   StreamSubscription<Uint8List>? _micStreamSubscription;
   Completer<void>? _recordingStartCompleter;
@@ -27,6 +30,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   static const _featureStreaming = 'AssistantBloc Streaming';
   static const _featureMode = 'AssistantBloc Mode';
   static const _featureResponse = 'AssistantBloc Response';
+  static const _featurePlayback = 'AssistantBloc Playback';
 
   void _debug(String feature, String message) {
     logDebug(
@@ -457,8 +461,19 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ResponseAudioReceived event,
     Emitter<AssistantState> emit,
   ) async {
+    final timestamp = DateTime.now().toIso8601String();
+    _debug(
+      _featurePlayback,
+      '[$timestamp] Received audio chunk: item=${event.itemId} bytes=${event.audioData.length}',
+    );
+
     _positionTracker.addChunk(event.itemId, event.audioData.length);
     await _audioService.appendVoiceChunk(event.itemId, event.audioData);
+
+    if (event.audioData.isNotEmpty) {
+      _responsesWithAudio.add(event.itemId);
+      _activeResponseItemId = event.itemId;
+    }
 
     if (state.responseState != ResponseState.responding) {
       emit(state.copyWith(responseState: ResponseState.responding));
@@ -469,6 +484,12 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ResponseAudioStreamEnded event,
     Emitter<AssistantState> emit,
   ) async {
+    final timestamp = DateTime.now().toIso8601String();
+    _debug(
+      _featurePlayback,
+      '[$timestamp] Audio stream ended marker received: item=${event.itemId}',
+    );
+
     await _audioService.appendVoiceChunk(event.itemId, Uint8List(0));
   }
 
@@ -481,8 +502,18 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final result = _positionTracker.getInterruptionState(timestamp);
 
+    _debug(
+      _featurePlayback,
+      '[${DateTime.now().toIso8601String()}] Interrupt requested at sample=${result.sampleCount} for item=${result.itemId}',
+    );
+
     await _audioService.stopVoice();
     await _client.cancelResponse(result.itemId, result.sampleCount);
+
+    if (_activeResponseItemId != null) {
+      _responsesWithAudio.remove(_activeResponseItemId!);
+      _activeResponseItemId = null;
+    }
 
     emit(state.copyWith(responseState: ResponseState.idle));
     _positionTracker.reset();
@@ -492,7 +523,27 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ResponseCompleted event,
     Emitter<AssistantState> emit,
   ) {
-    unawaited(_audioService.stopVoice());
+    final timestamp = DateTime.now().toIso8601String();
+    final hadAudio = _responsesWithAudio.remove(event.itemId);
+    final activeMatch = _activeResponseItemId == event.itemId;
+
+    _debug(
+      _featurePlayback,
+      '[$timestamp] Response completed: item=${event.itemId} hadAudio=$hadAudio activeMatch=$activeMatch',
+    );
+
+    if (!hadAudio) {
+      _debug(
+        _featurePlayback,
+        '[$timestamp] No audio associated with response; stopping voice playback explicitly.',
+      );
+      unawaited(_audioService.stopVoice());
+    }
+
+    if (activeMatch) {
+      _activeResponseItemId = null;
+    }
+
     emit(state.copyWith(responseState: ResponseState.idle));
     _positionTracker.reset();
   }
