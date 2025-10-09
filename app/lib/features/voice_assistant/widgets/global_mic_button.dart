@@ -173,6 +173,22 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
           initialData: recorder.currentState,
           builder: (context, snapshot) {
             final recorderState = snapshot.data ?? AudioRecorderState.idle();
+            final shouldClearStreamingRequest = _streamingRequested &&
+                !assistantState.streamingEnabled &&
+                assistantState.userInput != UserInputState.recording &&
+                recorderState.status != AudioRecorderStatus.streamingActive &&
+                recorderState.status !=
+                    AudioRecorderStatus.preparingStreaming &&
+                recorderState.status != AudioRecorderStatus.finalizingStreaming;
+
+            if (shouldClearStreamingRequest) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || !_streamingRequested) return;
+                setState(() {
+                  _streamingRequested = false;
+                });
+              });
+            }
             final colors = Theme.of(context).colorScheme;
 
             final recorderError =

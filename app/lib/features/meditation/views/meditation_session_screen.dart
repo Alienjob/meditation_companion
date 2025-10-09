@@ -6,6 +6,8 @@ import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.da
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
 import '../widgets/chat_assistant_widget.dart';
 import '../widgets/chat_bottom_sheet_widget.dart';
+import '../widgets/ambient_sounds_bottom_sheet_widget.dart';
+import '../widgets/ambient_sounds_panel.dart';
 import '../../voice_assistant/widgets/global_mic_button.dart';
 
 class MeditationSessionScreen extends StatelessWidget {
@@ -30,6 +32,11 @@ class MeditationSessionScreen extends StatelessWidget {
                   onPressed: () => ChatBottomSheetWidget.show(context),
                 ),
               IconButton(
+                icon: const Icon(Icons.music_note),
+                tooltip: 'Ambient sounds',
+                onPressed: () => AmbientSoundsBottomSheetWidget.show(context),
+              ),
+              IconButton(
                 icon: const Icon(Icons.logout),
                 tooltip: 'Sign out',
                 onPressed: () =>
@@ -39,6 +46,7 @@ class MeditationSessionScreen extends StatelessWidget {
           ),
           body: isWideScreen
               ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: const [
                     Expanded(
                       flex: 1,
@@ -47,6 +55,10 @@ class MeditationSessionScreen extends StatelessWidget {
                     Expanded(
                       flex: 1,
                       child: ChatAssistantWidget(),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: _AmbientPanelSurface(),
                     ),
                   ],
                 )
@@ -76,6 +88,24 @@ class _MicSurface extends StatelessWidget {
           children: const [
             GlobalMicButton(),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AmbientPanelSurface extends StatelessWidget {
+  const _AmbientPanelSurface();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: const AmbientSoundsPanel(),
         ),
       ),
     );
