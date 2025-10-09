@@ -18,6 +18,7 @@ import 'package:meditation_companion/features/meditation/services/real_timer_ser
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
 import 'package:meditation_companion/features/voice_assistant/services/audio_recorder.dart';
 import 'package:meditation_companion/features/voice_assistant/services/real_audio_recorder.dart';
+import 'package:meditation_companion/features/voice_assistant/voice_assistant_scope.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:record/record.dart' as record_pkg;
@@ -164,7 +165,9 @@ class _MainAppState extends State<MainApp> {
             ),
             useMaterial3: true,
           ),
-          home: const AuthWrapper(),
+          home: const VoiceAssistantScope(
+            child: AuthWrapper(),
+          ),
         ),
       ),
     );

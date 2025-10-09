@@ -1,0 +1,394 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../bloc/assistant_bloc.dart';
+import '../bloc/assistant_event.dart';
+import '../bloc/assistant_state.dart';
+import '../services/audio_recorder.dart';
+
+class GlobalMicButton extends StatefulWidget {
+  const GlobalMicButton({super.key});
+
+  @override
+  State<GlobalMicButton> createState() => _GlobalMicButtonState();
+}
+
+class _GlobalMicButtonState extends State<GlobalMicButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rippleController;
+
+  bool _isHolding = false;
+  bool _streamingRequested = false;
+  double _dragOffset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  @override
+  void dispose() {
+    _rippleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startHold() async {
+    if (_isHolding) return;
+    final assistantBloc = context.read<AssistantBloc>();
+    AssistantState assistantState = assistantBloc.state;
+
+    if (!assistantState.canRecord) {
+      if (assistantState.canInterrupt) {
+        assistantBloc.add(InterruptResponse());
+        try {
+          assistantState = await assistantBloc.stream
+              .firstWhere(
+                (state) => state.canRecord,
+                orElse: () => assistantBloc.state,
+              )
+              .timeout(const Duration(milliseconds: 600));
+        } catch (_) {
+          assistantState = assistantBloc.state;
+        }
+      }
+
+      if (!assistantState.canRecord) {
+        return;
+      }
+    }
+
+    if (assistantState.streamingEnabled) {
+      assistantBloc.add(const ToggleStreamingMode(false));
+    }
+
+    assistantBloc.add(StartRecordingUserAudioInput());
+    setState(() {
+      _isHolding = true;
+      _streamingRequested = false;
+      _dragOffset = 0;
+    });
+  }
+
+  void _requestStreaming() {
+    if (_streamingRequested) return;
+    _streamingRequested = true;
+    context.read<AssistantBloc>().add(const ToggleStreamingMode(true));
+    setState(() {});
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    if (!_isHolding) return;
+    _dragOffset += details.delta.dy;
+    if (!_streamingRequested && _dragOffset <= -48) {
+      _requestStreaming();
+    }
+  }
+
+  void _finishHold() {
+    if (!_isHolding) return;
+    final assistantBloc = context.read<AssistantBloc>();
+    assistantBloc.add(StopRecordingUserAudioInput());
+    if (_streamingRequested || assistantBloc.state.streamingEnabled) {
+      Future.microtask(() {
+        assistantBloc.add(const ToggleStreamingMode(false));
+      });
+    }
+    setState(() {
+      _isHolding = false;
+      _streamingRequested = false;
+      _dragOffset = 0;
+    });
+  }
+
+  void _cancelHold() {
+    if (!_isHolding) return;
+    final assistantBloc = context.read<AssistantBloc>();
+    assistantBloc.add(StopRecordingUserAudioInput());
+    if (_streamingRequested || assistantBloc.state.streamingEnabled) {
+      assistantBloc.add(const ToggleStreamingMode(false));
+    }
+    setState(() {
+      _isHolding = false;
+      _streamingRequested = false;
+      _dragOffset = 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recorder = context.read<AudioRecorder>();
+    return BlocBuilder<AssistantBloc, AssistantState>(
+      builder: (context, assistantState) {
+        return StreamBuilder<AudioRecorderState>(
+          stream: recorder.stateStream,
+          initialData: recorder.currentState,
+          builder: (context, snapshot) {
+            final recorderState = snapshot.data ?? AudioRecorderState.idle();
+            final colors = Theme.of(context).colorScheme;
+
+            final recorderError =
+                recorderState.status == AudioRecorderStatus.error;
+            final assistantError =
+                assistantState.clientStatus == ClientStatus.error ||
+                    assistantState.lastError != null;
+            final isError = recorderError || assistantError;
+
+            final isStreamingFace =
+                recorderState.mode == AudioRecorderMode.streaming ||
+                    recorderState.status ==
+                        AudioRecorderStatus.preparingStreaming ||
+                    recorderState.status ==
+                        AudioRecorderStatus.finalizingStreaming ||
+                    assistantState.streamingEnabled ||
+                    _streamingRequested;
+            final showSpinner =
+                recorderState.status == AudioRecorderStatus.preparingBuffered ||
+                    recorderState.status ==
+                        AudioRecorderStatus.finalizingBuffered ||
+                    recorderState.status ==
+                        AudioRecorderStatus.preparingStreaming ||
+                    recorderState.status ==
+                        AudioRecorderStatus.finalizingStreaming ||
+                    assistantState.userInput == UserInputState.recorded;
+            final showRipple =
+                recorderState.status == AudioRecorderStatus.streamingActive;
+
+            if (showRipple && !_rippleController.isAnimating) {
+              _rippleController.repeat();
+            } else if (!showRipple && _rippleController.isAnimating) {
+              _rippleController.stop();
+            }
+
+            final baseColor = _resolveBaseColor(
+              colors,
+              recorderState,
+              isStreamingFace,
+              isError,
+            );
+            final iconData = _resolveIcon(
+              recorderState,
+              isStreamingFace,
+              isError,
+            );
+
+            final String? errorMessage = recorderError
+                ? recorderState.message
+                : assistantState.lastError;
+            final (primaryText, secondaryText) = _resolveStatusText(
+              recorderState,
+              assistantState,
+              isError,
+              errorMessage,
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTapDown: (_) => _startHold(),
+                  onTapUp: (_) => _finishHold(),
+                  onTapCancel: _cancelHold,
+                  onPanStart: (_) => _startHold(),
+                  onPanUpdate: _handlePanUpdate,
+                  onPanEnd: (_) => _finishHold(),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (showRipple) _buildRipple(baseColor),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                        width: isStreamingFace ? 108 : 96,
+                        height: isStreamingFace ? 108 : 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: baseColor,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          transitionBuilder: (child, animation) {
+                            return RotationTransition(
+                              turns: Tween<double>(begin: 0.5, end: 1)
+                                  .animate(animation),
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            iconData,
+                            key: ValueKey(iconData.codePoint),
+                            color: colors.onPrimary,
+                            size: isStreamingFace ? 46 : 40,
+                          ),
+                        ),
+                      ),
+                      if (showSpinner)
+                        SizedBox(
+                          width: 120,
+                          height: 120,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 4,
+                            color: colors.onPrimary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  primaryText,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                if (_shouldShowSwipeHint(recorderState, assistantState))
+                  const SizedBox(height: 8),
+                if (_shouldShowSwipeHint(recorderState, assistantState))
+                  Text(
+                    'Swipe up for streaming',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                if (secondaryText != null &&
+                    !_shouldShowSwipeHint(recorderState, assistantState))
+                  const SizedBox(height: 8),
+                if (secondaryText != null &&
+                    !_shouldShowSwipeHint(recorderState, assistantState))
+                  Text(
+                    secondaryText,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  bool _shouldShowSwipeHint(
+    AudioRecorderState recorderState,
+    AssistantState assistantState,
+  ) {
+    return _isHolding &&
+        !_streamingRequested &&
+        assistantState.canRecord &&
+        (recorderState.status == AudioRecorderStatus.recordingBuffered ||
+            recorderState.status == AudioRecorderStatus.preparingBuffered);
+  }
+
+  (String, String?) _resolveStatusText(
+    AudioRecorderState recorderState,
+    AssistantState assistantState,
+    bool isError,
+    String? errorMessage,
+  ) {
+    if (isError) {
+      return (
+        errorMessage ?? 'Recorder error',
+        'Press and hold to retry',
+      );
+    }
+
+    if (!assistantState.canRecord &&
+        assistantState.userInput != UserInputState.recording) {
+      if (assistantState.responseState == ResponseState.responding) {
+        return ('Assistant speaking…', 'Wait for response to finish');
+      }
+      switch (assistantState.clientStatus) {
+        case ClientStatus.connecting:
+          return ('Connecting to assistant…', null);
+        case ClientStatus.rateLimited:
+          return ('Assistant busy, retry soon', null);
+        case ClientStatus.error:
+          return ('Assistant error', 'Press and hold to retry');
+        case ClientStatus.ready:
+          break;
+      }
+    }
+
+    if (assistantState.userInput == UserInputState.recorded) {
+      return ('Processing audio…', 'Sending to assistant');
+    }
+
+    switch (recorderState.status) {
+      case AudioRecorderStatus.idle:
+        return ('Hold to record', null);
+      case AudioRecorderStatus.preparingBuffered:
+        return ('Preparing microphone…', null);
+      case AudioRecorderStatus.recordingBuffered:
+        return ('Recording message…', null);
+      case AudioRecorderStatus.finalizingBuffered:
+        return ('Processing audio…', null);
+      case AudioRecorderStatus.preparingStreaming:
+        return ('Starting stream…', 'Release to send');
+      case AudioRecorderStatus.streamingActive:
+        return ('Streaming live…', 'Release to finish');
+      case AudioRecorderStatus.finalizingStreaming:
+        return ('Wrapping up stream…', null);
+      case AudioRecorderStatus.error:
+        return ('Recorder error', 'Press and hold to retry');
+    }
+  }
+
+  IconData _resolveIcon(
+    AudioRecorderState recorderState,
+    bool isStreamingFace,
+    bool isError,
+  ) {
+    if (isError) return Icons.error_outline;
+    if (isStreamingFace) return Icons.wifi_tethering;
+    if (recorderState.status == AudioRecorderStatus.recordingBuffered) {
+      return Icons.mic;
+    }
+    return Icons.mic_none;
+  }
+
+  Color _resolveBaseColor(
+    ColorScheme colors,
+    AudioRecorderState recorderState,
+    bool isStreamingFace,
+    bool isError,
+  ) {
+    if (isError) {
+      return Colors.red.shade600;
+    }
+    if (isStreamingFace ||
+        recorderState.status == AudioRecorderStatus.preparingStreaming ||
+        recorderState.status == AudioRecorderStatus.finalizingStreaming) {
+      return colors.primary;
+    }
+    if (recorderState.status == AudioRecorderStatus.recordingBuffered ||
+        recorderState.status == AudioRecorderStatus.preparingBuffered ||
+        recorderState.status == AudioRecorderStatus.finalizingBuffered) {
+      return Colors.deepOrange.shade400;
+    }
+    return colors.surfaceContainerHighest;
+  }
+
+  Widget _buildRipple(Color color) {
+    return AnimatedBuilder(
+      animation: _rippleController,
+      builder: (context, child) {
+        final value = _rippleController.value;
+        final size = 140 + (value * 60);
+        final opacity = (1 - value).clamp(0.0, 1.0);
+        return Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: 0.25 * opacity),
+          ),
+        );
+      },
+    );
+  }
+}

@@ -82,6 +82,7 @@ class VoiceAssistantRepository implements IChatRepository {
   final Map<String, ChatMessage> _inProgressMessages = {};
   final Map<String, int> _processedAudioBytes = {};
   final Map<String, ChatMessage> _inProgressUserMessages = {};
+  final Map<String, ChatMessage> _inProgressUserMessagesByConversationId = {};
 
   VoiceAssistantRepository(this._client) {
     _repoDebug(
@@ -208,6 +209,8 @@ class VoiceAssistantRepository implements IChatRepository {
           messageId,
           transcript: item.formatted?.transcript,
           deltaTranscript: delta?.transcript,
+          text: item.formatted?.text,
+          deltaText: delta?.text,
           markCompleted: false,
         );
         return;
@@ -239,6 +242,8 @@ class VoiceAssistantRepository implements IChatRepository {
           messageId,
           transcript: item.formatted?.transcript,
           deltaTranscript: null,
+          text: item.formatted?.text,
+          deltaText: null,
           markCompleted: false,
         );
         return;
@@ -268,6 +273,8 @@ class VoiceAssistantRepository implements IChatRepository {
           message.id,
           transcript: item.formatted?.transcript,
           deltaTranscript: null,
+          text: item.formatted?.text,
+          deltaText: null,
           markCompleted: true,
         );
         return;
@@ -434,6 +441,8 @@ class VoiceAssistantRepository implements IChatRepository {
     String messageId, {
     String? transcript,
     String? deltaTranscript,
+    String? text,
+    String? deltaText,
     required bool markCompleted,
   }) {
     final timestamp = DateTime.now().toIso8601String();
@@ -446,157 +455,118 @@ class VoiceAssistantRepository implements IChatRepository {
       'VoiceAssistantRepository - MESSAGE TYPE CHECK: Is this voice message (should create by ID) or text message (should find awaiting)?',
     );
 
-    // Try to find existing user message by content/transcript match
-    final transcriptText = transcript ?? deltaTranscript;
-    if (transcriptText == null || transcriptText.isEmpty) {
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - No transcript text provided, skipping user message upsert',
-      );
-      return;
+    final candidateTextRaw = transcript ?? deltaTranscript ?? text ?? deltaText;
+    final candidateText = candidateTextRaw?.trim();
+    final hasCandidateText = candidateText != null && candidateText.isNotEmpty;
+
+    final String? effectiveCandidateText =
+        hasCandidateText ? candidateText : null;
+
+    ChatMessage? existingMessage =
+        _inProgressUserMessagesByConversationId[messageId];
+    int existingIndex = -1;
+
+    if (existingMessage == null) {
+      existingIndex = _messages.indexWhere((m) => m.id == messageId);
+      if (existingIndex != -1) {
+        existingMessage = _messages[existingIndex];
+      }
+    } else {
+      existingIndex = _messages.indexWhere((m) => m.id == existingMessage!.id);
     }
 
-    _repoDebug(
-      _repoUserMessage,
-      'VoiceAssistantRepository - Looking for existing user message with transcript: "$transcriptText"',
-    );
-    _repoDebug(
-      _repoUserMessage,
-      'VoiceAssistantRepository - Current _inProgressUserMessages count: ${_inProgressUserMessages.length}',
-    );
-
-    // Look for existing user message in _inProgressUserMessages first
-    ChatMessage? existingMessage;
-    String? existingKey;
-
-    // Skip very short transcripts that are likely noise or partial updates
-    if (transcriptText.trim().length <= 1) {
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - Skipping very short transcript: "$transcriptText"',
-      );
-      return;
-    }
-
-    for (final entry in _inProgressUserMessages.entries) {
-      // More precise matching: either exact match or one is a meaningful substring of the other
-      final existingContent = entry.value.content.trim();
-      final newContent = transcriptText.trim();
-
-      // Skip if one of the strings is too short to be a meaningful match
-      if (existingContent.length <= 1 || newContent.length <= 1) {
-        continue;
+    String? matchedContentKey;
+    if (existingMessage == null && effectiveCandidateText != null) {
+      for (final entry in _inProgressUserMessages.entries) {
+        final existingContent = entry.value.content.trim();
+        final newContent = effectiveCandidateText;
+        if (existingContent.isEmpty && newContent.isEmpty) {
+          existingMessage = entry.value;
+          matchedContentKey = entry.key;
+          break;
+        }
+        if (existingContent.isEmpty || newContent.isEmpty) continue;
+        if (existingContent == newContent ||
+            (existingContent.length > 5 &&
+                newContent.contains(existingContent)) ||
+            (newContent.length > 5 && existingContent.contains(newContent))) {
+          existingMessage = entry.value;
+          matchedContentKey = entry.key;
+          break;
+        }
       }
 
-      // Check if they are related: either exact match or one is substantially contained in the other
-      if (existingContent == newContent ||
-          (existingContent.length > 5 &&
-              newContent.contains(existingContent)) ||
-          (newContent.length > 5 && existingContent.contains(newContent))) {
-        existingMessage = entry.value;
-        existingKey = entry.key;
-        break;
+      if (existingMessage != null && existingIndex == -1) {
+        final targetId = existingMessage.id;
+        existingIndex = _messages.indexWhere((m) => m.id == targetId);
       }
     }
 
-    if (existingMessage != null && existingKey != null) {
-      // Update existing message with full transcript
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - Found existing user message to update: key="$existingKey"',
-      );
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - MESSAGE ID MISMATCH CHECK: existing.id="${existingMessage.id}" vs new messageId="$messageId"',
-      );
-      final updated = existingMessage.copyWith(
-        content: transcript ?? existingMessage.content,
+    if (existingMessage == null && _inProgressUserMessages.isNotEmpty) {
+      final fallbackEntry = _inProgressUserMessages.entries.first;
+      final fallbackMessage = fallbackEntry.value;
+      existingMessage = fallbackMessage;
+      matchedContentKey ??= fallbackEntry.key;
+      existingIndex = _messages.indexWhere((m) => m.id == fallbackMessage.id);
+    }
+
+    final String contentToUse = effectiveCandidateText ?? '[voice message]';
+
+    if (existingMessage == null) {
+      if (!hasCandidateText) {
+        _repoDebug(
+          _repoUserMessage,
+          'VoiceAssistantRepository - No candidate text available; deferring user message creation for item=$messageId',
+        );
+        return;
+      }
+
+      final newMessage = ChatMessage(
+        id: messageId,
+        content: contentToUse,
+        senderId: 'user',
+        timestamp: DateTime.now(),
+        isUser: true,
         status:
             markCompleted ? MessageStatus.completed : MessageStatus.streaming,
       );
 
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - Updating user message: old content="${existingMessage.content}" -> new content="${updated.content}", status=${updated.status.name}',
-      );
-
-      final index = _messages.indexWhere((m) => m.id == existingMessage!.id);
-      if (index != -1) {
-        _messages[index] = updated;
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - Updated user message at index $index',
-        );
-        _messagesController.add(updated);
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - Emitted updated user message to stream',
-        );
-      } else {
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - Warning: Could not find user message in _messages list for update',
-        );
+      _messages.add(newMessage);
+      _messagesController.add(newMessage);
+      _inProgressUserMessagesByConversationId[messageId] = newMessage;
+      if (effectiveCandidateText != null) {
+        _inProgressUserMessages[effectiveCandidateText] = newMessage;
       }
+      return;
+    }
 
-      if (markCompleted) {
-        _inProgressUserMessages.remove(existingKey);
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - Removed completed user message from _inProgressUserMessages',
-        );
-      } else {
-        _inProgressUserMessages[existingKey] = updated;
-        _repoDebug(
-          _repoUserMessage,
-          'VoiceAssistantRepository - Updated user message in _inProgressUserMessages',
-        );
-      }
-    } else if (!markCompleted) {
-      // Create new user message from API event (for voice input without pre-existing text)
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - VOICE MESSAGE CREATION: No existing user message found, creating new voice message from API transcript',
-      );
-      final message = ChatMessage(
-        id: messageId,
-        content: transcriptText,
-        senderId: 'user',
-        timestamp: DateTime.now(),
-        isUser: true,
-        status: MessageStatus.streaming,
-      );
+    final updated = existingMessage.copyWith(
+      content: hasCandidateText ? contentToUse : existingMessage.content,
+      status: markCompleted ? MessageStatus.completed : MessageStatus.streaming,
+    );
 
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - VOICE MESSAGE CREATED: id=$messageId, content="$transcriptText", status=${message.status.name} at ${DateTime.now().toIso8601String()}',
-      );
-      _messages.add(message);
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - VOICE MESSAGE ADDED TO _messages: index=${_messages.length - 1}, total messages=${_messages.length}',
-      );
-
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - VOICE MESSAGE STREAM EMIT: About to emit to _messagesController at ${DateTime.now().toIso8601String()}',
-      );
-      _messagesController.add(message);
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - VOICE MESSAGE STREAM EMITTED: Message sent to stream, controller closed=${_messagesController.isClosed}',
-      );
-
-      _inProgressUserMessages[transcriptText] = message;
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - Stored new user message in _inProgressUserMessages with key="$transcriptText"',
-      );
+    if (existingIndex != -1) {
+      _messages[existingIndex] = updated;
     } else {
-      _repoDebug(
-        _repoUserMessage,
-        'VoiceAssistantRepository - No existing user message found and markCompleted=true, skipping message creation',
-      );
+      _messages.add(updated);
+    }
+
+    _messagesController.add(updated);
+    _inProgressUserMessagesByConversationId[messageId] = updated;
+
+    if (matchedContentKey != null) {
+      _inProgressUserMessages.remove(matchedContentKey);
+    }
+    if (effectiveCandidateText != null) {
+      _inProgressUserMessages
+          .removeWhere((key, value) => value.id == updated.id);
+      _inProgressUserMessages[effectiveCandidateText] = updated;
+    }
+
+    if (markCompleted) {
+      _inProgressUserMessagesByConversationId.remove(messageId);
+      _inProgressUserMessages
+          .removeWhere((key, value) => value.id == updated.id);
     }
   }
 
@@ -624,6 +594,7 @@ class VoiceAssistantRepository implements IChatRepository {
     _messagesController.close();
     _inProgressMessages.clear();
     _inProgressUserMessages.clear();
+    _inProgressUserMessagesByConversationId.clear();
     _processedAudioBytes.clear();
   }
 }

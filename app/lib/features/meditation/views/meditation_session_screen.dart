@@ -4,9 +4,9 @@ import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_event.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_bloc.dart';
 import 'package:meditation_companion/features/meditation/bloc/meditation_state.dart';
-import '../widgets/meditation_content_widget.dart';
 import '../widgets/chat_assistant_widget.dart';
 import '../widgets/chat_bottom_sheet_widget.dart';
+import '../../voice_assistant/widgets/global_mic_button.dart';
 
 class MeditationSessionScreen extends StatelessWidget {
   const MeditationSessionScreen({super.key});
@@ -17,7 +17,7 @@ class MeditationSessionScreen extends StatelessWidget {
       listener: (context, state) {
         // Handle any notifications or side effects here
       },
-      builder: (context, state) {
+      builder: (context, _) {
         final isWideScreen = MediaQuery.of(context).size.width > 800;
 
         return Scaffold(
@@ -39,20 +39,18 @@ class MeditationSessionScreen extends StatelessWidget {
           ),
           body: isWideScreen
               ? Row(
-                  children: [
-                    // Main meditation content
+                  children: const [
                     Expanded(
-                      flex: 2,
-                      child: MeditationContentWidget(state: state),
+                      flex: 1,
+                      child: _MicSurface(),
                     ),
-                    // Chat and voice assistant panel
-                    const Expanded(
+                    Expanded(
                       flex: 1,
                       child: ChatAssistantWidget(),
                     ),
                   ],
                 )
-              : MeditationContentWidget(state: state),
+              : const _MicSurface(),
           floatingActionButton: !isWideScreen
               ? FloatingActionButton(
                   onPressed: () => ChatBottomSheetWidget.show(context),
@@ -61,6 +59,25 @@ class MeditationSessionScreen extends StatelessWidget {
               : null,
         );
       },
+    );
+  }
+}
+
+class _MicSurface extends StatelessWidget {
+  const _MicSurface();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            GlobalMicButton(),
+          ],
+        ),
+      ),
     );
   }
 }

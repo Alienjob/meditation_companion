@@ -4,14 +4,11 @@ import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
-import 'package:meditation_companion/features/chat/bloc/chat_bloc.dart';
 import 'package:meditation_companion/features/meditation/services/audio_service.dart';
 import 'package:meditation_companion/features/voice_assistant/services/audio_recorder.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_bloc.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_event.dart';
 import 'package:meditation_companion/features/voice_assistant/bloc/assistant_state.dart';
-
-class MockChatBloc extends Mock implements ChatBloc {}
 
 class MockAudioService extends Mock implements AudioService {}
 
@@ -20,7 +17,6 @@ class MockAudioRecorder extends Mock implements AudioRecorder {}
 class MockRealtimeClient extends Mock implements RealtimeClient {}
 
 void main() {
-  late MockChatBloc chatBloc;
   late MockAudioService audioService;
   late MockAudioRecorder recorder;
   late MockRealtimeClient client;
@@ -30,7 +26,6 @@ void main() {
   });
 
   setUp(() {
-    chatBloc = MockChatBloc();
     audioService = MockAudioService();
     recorder = MockAudioRecorder();
     client = MockRealtimeClient();
@@ -43,8 +38,13 @@ void main() {
     when(() => audioService.stopVoice()).thenAnswer((_) async {});
 
     when(() => recorder.audioStream).thenAnswer((_) => const Stream.empty());
+    when(() => recorder.stateStream).thenAnswer((_) => const Stream.empty());
+    when(() => recorder.currentState).thenReturn(AudioRecorderState.idle());
     when(() => recorder.startStreaming()).thenAnswer((_) async {});
     when(() => recorder.stopStreaming()).thenAnswer((_) async {});
+    when(() => recorder.startRecording()).thenAnswer((_) async {});
+    when(() => recorder.stopRecording())
+        .thenAnswer((_) async => Uint8List.fromList([1, 2, 3]));
     when(() => client.appendInputAudio(any())).thenAnswer((_) async => true);
     when(() => client.createResponse()).thenAnswer((_) async => true);
 
@@ -58,7 +58,6 @@ void main() {
   group('Assistant Bloc Tests', () {
     test('initial state is correct', () {
       final bloc = AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -70,7 +69,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'emits ready state when client connects',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -84,7 +82,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'toggles streaming mode on and off',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -103,7 +100,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles client error',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -120,7 +116,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles recording start and duration updates in buffered mode',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -158,7 +153,6 @@ void main() {
       when(() => recorder.audioStream).thenAnswer((_) => controller.stream);
 
       final bloc = AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -186,7 +180,7 @@ void main() {
         isTrue,
       );
       expect(bloc.state.userInput, UserInputState.idle);
-      expect(bloc.state.streamingEnabled, isTrue);
+      expect(bloc.state.streamingEnabled, isFalse);
 
       verify(() => recorder.startStreaming()).called(1);
       verify(() => recorder.stopStreaming()).called(1);
@@ -201,7 +195,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles sending recorded audio',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -228,7 +221,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles audio receiving and playback',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -256,7 +248,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles response interruption',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,
@@ -286,7 +277,6 @@ void main() {
     blocTest<AssistantBloc, AssistantState>(
       'handles response completion',
       build: () => AssistantBloc(
-        chatBloc: chatBloc,
         audioService: audioService,
         recorder: recorder,
         client: client,

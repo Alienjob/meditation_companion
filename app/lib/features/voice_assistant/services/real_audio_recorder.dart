@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -30,48 +31,81 @@ void _recorderError(String message, {Object? error, StackTrace? stackTrace}) {
   );
 }
 
-enum _RecorderMode { none, buffered, streaming }
-
 /// Concrete [AudioRecorder] that captures microphone input using the
-/// `record` plugin and returns the raw bytes of the recorded file.
+/// `record` plugin and returns raw bytes or stream chunks.
 class RealAudioRecorder implements AudioRecorder {
   RealAudioRecorder({
     record_pkg.AudioRecorder? audioRecorder,
-    record_pkg.RecordConfig? recordConfig,
+    record_pkg.RecordConfig? bufferedRecordConfig,
+    record_pkg.RecordConfig? streamingRecordConfig,
     int? streamBufferSize,
   })  : _audioRecorder = audioRecorder ?? record_pkg.AudioRecorder(),
-        _recordConfig = recordConfig ??
+        _bufferedRecordConfig = bufferedRecordConfig ??
             record_pkg.RecordConfig(
-              encoder: kIsWeb
-                  ? record_pkg.AudioEncoder.pcm16bits
-                  : record_pkg.AudioEncoder.aacLc,
-              bitRate: kIsWeb ? 384000 : 128000,
+              encoder: record_pkg.AudioEncoder.pcm16bits,
+              bitRate: 384000,
               sampleRate: 24000,
               numChannels: 1,
-              streamBufferSize: streamBufferSize ?? (kIsWeb ? 4096 : null),
+              streamBufferSize: streamBufferSize ?? 4096,
+            ),
+        _streamingRecordConfig = streamingRecordConfig ??
+            record_pkg.RecordConfig(
+              // The record plugin only supports PCM output when streaming on iOS,
+              // so default to a raw PCM encoder to avoid runtime failures.
+              encoder: record_pkg.AudioEncoder.pcm16bits,
+              bitRate: 384000,
+              sampleRate: 24000,
+              numChannels: 1,
+              streamBufferSize: streamBufferSize ?? 4096,
             );
 
   final record_pkg.AudioRecorder _audioRecorder;
-  final record_pkg.RecordConfig _recordConfig;
+  final record_pkg.RecordConfig _bufferedRecordConfig;
+  final record_pkg.RecordConfig _streamingRecordConfig;
+
+  final _stateController =
+      StreamController<AudioRecorderState>.broadcast(sync: true);
+  AudioRecorderState _state = AudioRecorderState.idle();
+  final bool _useFileBuffer = !kIsWeb;
 
   StreamSubscription<Uint8List>? _recordingSubscription;
-  BytesBuilder? _bytesBuilder;
   Completer<void>? _recordingClosed;
   StreamController<Uint8List>? _streamController;
-  _RecorderMode _mode = _RecorderMode.none;
+  AudioRecorderMode _activeMode = AudioRecorderMode.none;
+  String? _currentRecordingPath;
+  BytesBuilder? _bytesBuilder;
+
+  @override
+  AudioRecorderState get currentState => _state;
+
+  @override
+  Stream<AudioRecorderState> get stateStream => _stateController.stream;
 
   @override
   Future<void> startRecording() async {
-    if (_mode != _RecorderMode.none) {
+    if (_activeMode != AudioRecorderMode.none) {
       throw const AudioRecorderException('Recorder already active');
     }
-    _bytesBuilder = BytesBuilder(copy: false);
-    await _startCapture(_RecorderMode.buffered);
+
+    _emitState(
+      _state.copyWith(
+        status: AudioRecorderStatus.preparingBuffered,
+        mode: AudioRecorderMode.buffered,
+        clearMessage: true,
+      ),
+    );
+
+    if (_useFileBuffer) {
+      await _startBufferedCaptureFile();
+    } else {
+      _bytesBuilder = BytesBuilder(copy: false);
+      await _startBufferedCaptureStream();
+    }
   }
 
   @override
   Future<Uint8List> stopRecording() async {
-    if (_mode != _RecorderMode.buffered) {
+    if (_activeMode != AudioRecorderMode.buffered) {
       throw const AudioRecorderException('Recorder is not currently running');
     }
 
@@ -79,12 +113,54 @@ class RealAudioRecorder implements AudioRecorder {
     final subscription = _recordingSubscription;
 
     try {
+      _emitState(
+        _state.copyWith(status: AudioRecorderStatus.finalizingBuffered),
+      );
       final stopResult = _audioRecorder.stop();
       if (completer != null) {
         await completer.future;
       }
-      await stopResult;
+      Uint8List data;
+
+      if (_useFileBuffer) {
+        final recordedPath = await stopResult ?? _currentRecordingPath;
+        _activeMode = AudioRecorderMode.none;
+
+        if (recordedPath == null || recordedPath.isEmpty) {
+          throw const AudioRecorderException('No audio data was captured');
+        }
+
+        final file = File(recordedPath);
+        if (!await file.exists()) {
+          throw AudioRecorderException(
+            'Recorded file not found at $recordedPath',
+          );
+        }
+
+        final rawData = await file.readAsBytes();
+        if (rawData.isEmpty) {
+          throw const AudioRecorderException('Recorded audio was empty');
+        }
+
+        data = _extractPcmBytes(rawData);
+        unawaited(file.delete());
+      } else {
+        _activeMode = AudioRecorderMode.none;
+        final builder = _bytesBuilder;
+        if (builder == null) {
+          throw const AudioRecorderException('No audio data was captured');
+        }
+        data = builder.takeBytes();
+        if (data.isEmpty) {
+          throw const AudioRecorderException('Recorded audio was empty');
+        }
+      }
+
+      _emitState(AudioRecorderState.idle());
+      _resetBuffer();
+      return data;
     } catch (error, stackTrace) {
+      _emitError('Failed to stop recording: $error');
       Error.throwWithStackTrace(
         AudioRecorderException('Failed to stop recording: $error'),
         stackTrace,
@@ -93,35 +169,30 @@ class RealAudioRecorder implements AudioRecorder {
       await subscription?.cancel();
       _recordingSubscription = null;
     }
-
-    final builder = _bytesBuilder;
-    _resetBuffer();
-
-    if (builder == null) {
-      throw const AudioRecorderException('No audio data was captured');
-    }
-
-    final data = builder.takeBytes();
-    if (data.isEmpty) {
-      throw const AudioRecorderException('Recorded audio was empty');
-    }
-
-    return data;
   }
 
   @override
   Future<void> startStreaming() async {
-    if (_mode != _RecorderMode.none) {
+    if (_activeMode != AudioRecorderMode.none) {
       throw const AudioRecorderException('Recorder already active');
     }
+
     _ensureStreamController();
     _recorderDebug('RealAudioRecorder: startStreaming()');
-    await _startCapture(_RecorderMode.streaming);
+    _emitState(
+      _state.copyWith(
+        status: AudioRecorderStatus.preparingStreaming,
+        mode: AudioRecorderMode.streaming,
+        clearMessage: true,
+      ),
+    );
+
+    await _startStreamingCapture();
   }
 
   @override
   Future<void> stopStreaming() async {
-    if (_mode != _RecorderMode.streaming) {
+    if (_activeMode != AudioRecorderMode.streaming) {
       throw const AudioRecorderException('Recorder is not currently running');
     }
 
@@ -130,12 +201,16 @@ class RealAudioRecorder implements AudioRecorder {
 
     try {
       _recorderDebug('RealAudioRecorder: stopStreaming()');
+      _emitState(
+        _state.copyWith(status: AudioRecorderStatus.finalizingStreaming),
+      );
       final stopResult = _audioRecorder.stop();
       if (completer != null) {
         await completer.future;
       }
       await stopResult;
     } catch (error, stackTrace) {
+      _emitError('Failed to stop streaming: $error');
       Error.throwWithStackTrace(
         AudioRecorderException('Failed to stop streaming: $error'),
         stackTrace,
@@ -145,6 +220,8 @@ class RealAudioRecorder implements AudioRecorder {
       _recordingSubscription = null;
       _resetBuffer();
     }
+
+    _emitState(AudioRecorderState.idle());
   }
 
   @override
@@ -158,12 +235,16 @@ class RealAudioRecorder implements AudioRecorder {
     _resetBuffer();
     await _streamController?.close();
     await _audioRecorder.dispose();
+    if (!_stateController.isClosed) {
+      await _stateController.close();
+    }
   }
 
   void _resetBuffer() {
-    _bytesBuilder = null;
     _recordingClosed = null;
-    _mode = _RecorderMode.none;
+    _activeMode = AudioRecorderMode.none;
+    _currentRecordingPath = null;
+    _bytesBuilder = null;
   }
 
   StreamController<Uint8List> _ensureStreamController() {
@@ -171,7 +252,45 @@ class RealAudioRecorder implements AudioRecorder {
         StreamController<Uint8List>.broadcast(sync: true);
   }
 
-  Future<void> _startCapture(_RecorderMode mode) async {
+  Future<void> _startBufferedCaptureFile() async {
+    if (!await _audioRecorder.hasPermission()) {
+      throw const AudioRecorderException('Microphone permission not granted');
+    }
+
+    try {
+      final directory = Directory.systemTemp;
+      final fileName =
+          'voice_assistant_${DateTime.now().microsecondsSinceEpoch}.wav';
+      final targetPath = '${directory.path}/$fileName';
+      _currentRecordingPath = targetPath;
+
+      await _audioRecorder.start(
+        _bufferedRecordConfig,
+        path: targetPath,
+      );
+      _activeMode = AudioRecorderMode.buffered;
+      _emitState(
+        _state.copyWith(
+          status: AudioRecorderStatus.recordingBuffered,
+          mode: AudioRecorderMode.buffered,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _recorderError(
+        'RealAudioRecorder: failed to start buffered capture $error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      await _audioRecorder.cancel();
+      _emitError('Failed to start recording: $error');
+      Error.throwWithStackTrace(
+        AudioRecorderException('Failed to start recording: $error'),
+        stackTrace,
+      );
+    }
+  }
+
+  Future<void> _startBufferedCaptureStream() async {
     if (await _audioRecorder.isRecording()) {
       throw const AudioRecorderException('Recorder already active');
     }
@@ -181,30 +300,84 @@ class RealAudioRecorder implements AudioRecorder {
     }
 
     try {
-      final stream = await _audioRecorder.startStream(_recordConfig);
+      final stream = await _audioRecorder.startStream(_bufferedRecordConfig);
 
-      _mode = mode;
+      _activeMode = AudioRecorderMode.buffered;
       _recordingClosed = Completer<void>();
       _recorderDebug(
-          'RealAudioRecorder: recorder.startStream resolved (mode=$mode)');
+        'RealAudioRecorder: buffered recorder startStream resolved',
+      );
 
       _recordingSubscription = stream.listen(
         (chunk) {
-          switch (_mode) {
-            case _RecorderMode.buffered:
-              final builder = _bytesBuilder;
-              if (builder == null) return;
-              builder.add(chunk);
-              break;
-            case _RecorderMode.streaming:
-              final controller = _streamController;
-              if (controller != null && !controller.isClosed) {
-                // _recorderDebug('RealAudioRecorder: streaming chunk size=${chunk.length}');
-                controller.add(chunk);
-              }
-              break;
-            case _RecorderMode.none:
-              break;
+          final builder = _bytesBuilder;
+          if (builder == null) return;
+          builder.add(chunk);
+        },
+        cancelOnError: true,
+        onError: (error, stackTrace) {
+          _recorderError(
+            'RealAudioRecorder: buffered stream error $error',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          if (_recordingClosed?.isCompleted ?? true) return;
+          _recordingClosed?.completeError(error, stackTrace);
+          _emitError('Recorder stream error: $error');
+        },
+        onDone: () {
+          _recorderDebug('RealAudioRecorder: buffered stream done');
+          if (!(_recordingClosed?.isCompleted ?? true)) {
+            _recordingClosed?.complete();
+          }
+        },
+      );
+
+      _emitState(
+        _state.copyWith(
+          status: AudioRecorderStatus.recordingBuffered,
+          mode: AudioRecorderMode.buffered,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _recorderError(
+        'RealAudioRecorder: failed to start capture $error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      await _audioRecorder.cancel();
+      _resetBuffer();
+      _emitError('Failed to start recording: $error');
+      Error.throwWithStackTrace(
+        AudioRecorderException('Failed to start recording: $error'),
+        stackTrace,
+      );
+    }
+  }
+
+  Future<void> _startStreamingCapture() async {
+    if (await _audioRecorder.isRecording()) {
+      throw const AudioRecorderException('Recorder already active');
+    }
+
+    if (!await _audioRecorder.hasPermission()) {
+      throw const AudioRecorderException('Microphone permission not granted');
+    }
+
+    try {
+      final stream = await _audioRecorder.startStream(_streamingRecordConfig);
+
+      _activeMode = AudioRecorderMode.streaming;
+      _recordingClosed = Completer<void>();
+      _recorderDebug(
+        'RealAudioRecorder: recorder.startStream resolved (mode=$_activeMode)',
+      );
+
+      _recordingSubscription = stream.listen(
+        (chunk) {
+          final controller = _streamController;
+          if (controller != null && !controller.isClosed) {
+            controller.add(chunk);
           }
         },
         cancelOnError: true,
@@ -216,13 +389,21 @@ class RealAudioRecorder implements AudioRecorder {
           );
           if (_recordingClosed?.isCompleted ?? true) return;
           _recordingClosed?.completeError(error, stackTrace);
+          _emitError('Recorder stream error: $error');
         },
         onDone: () {
-          _recorderDebug('RealAudioRecorder: stream done (mode=$_mode)');
+          _recorderDebug('RealAudioRecorder: stream done (mode=$_activeMode)');
           if (!(_recordingClosed?.isCompleted ?? true)) {
             _recordingClosed?.complete();
           }
         },
+      );
+
+      _emitState(
+        _state.copyWith(
+          status: AudioRecorderStatus.streamingActive,
+          mode: AudioRecorderMode.streaming,
+        ),
       );
     } catch (error, stackTrace) {
       _recorderError(
@@ -232,19 +413,51 @@ class RealAudioRecorder implements AudioRecorder {
       );
       await _audioRecorder.cancel();
       _resetBuffer();
+      _emitError('Failed to start recording: $error');
       Error.throwWithStackTrace(
         AudioRecorderException('Failed to start recording: $error'),
         stackTrace,
       );
     }
   }
-}
 
-class AudioRecorderException implements Exception {
-  const AudioRecorderException(this.message);
+  void _emitState(AudioRecorderState state) {
+    _state = state;
+    if (!_stateController.isClosed) {
+      _stateController.add(state);
+    }
+  }
 
-  final String message;
+  void _emitError(String message) {
+    _emitState(
+      AudioRecorderState(
+        status: AudioRecorderStatus.error,
+        mode: AudioRecorderMode.none,
+        message: message,
+      ),
+    );
+  }
 
-  @override
-  String toString() => 'AudioRecorderException: $message';
+  Uint8List _extractPcmBytes(Uint8List data) {
+    const minimumHeaderLength = 44;
+    if (data.length <= minimumHeaderLength) {
+      return data;
+    }
+
+    final isRiff = data[0] == 0x52 &&
+        data[1] == 0x49 &&
+        data[2] == 0x46 &&
+        data[3] == 0x46;
+    final isWave = data[8] == 0x57 &&
+        data[9] == 0x41 &&
+        data[10] == 0x56 &&
+        data[11] == 0x45;
+
+    if (!isRiff || !isWave) {
+      return data;
+    }
+
+    // Standard PCM WAV header is 44 bytes; skip it to return raw PCM samples.
+    return Uint8List.fromList(data.sublist(minimumHeaderLength));
+  }
 }

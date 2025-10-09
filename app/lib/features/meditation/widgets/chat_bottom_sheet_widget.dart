@@ -4,6 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../meditation/bloc/meditation_bloc.dart';
 import '../services/audio_service.dart';
 import '../../voice_assistant/services/audio_recorder.dart';
+import '../../voice_assistant/bloc/assistant_bloc.dart';
+import '../../voice_assistant/repository/voice_assistant_repository.dart';
 import 'chat_assistant_widget.dart';
 
 class ChatBottomSheetWidget extends StatelessWidget {
@@ -50,6 +52,8 @@ class ChatBottomSheetWidget extends StatelessWidget {
     final audioService = context.read<AudioService>();
     final audioRecorder = context.read<AudioRecorder>();
     final meditationBloc = context.read<MeditationBloc>();
+    final assistantBloc = context.read<AssistantBloc>();
+    final voiceRepository = context.read<VoiceAssistantRepository>();
 
     showModalBottomSheet(
       context: context,
@@ -59,9 +63,15 @@ class ChatBottomSheetWidget extends StatelessWidget {
         providers: [
           RepositoryProvider<AudioService>.value(value: audioService),
           RepositoryProvider<AudioRecorder>.value(value: audioRecorder),
+          RepositoryProvider<VoiceAssistantRepository>.value(
+            value: voiceRepository,
+          ),
         ],
-        child: BlocProvider<MeditationBloc>.value(
-          value: meditationBloc,
+        child: MultiBlocProvider(
+          providers: [
+            BlocProvider<MeditationBloc>.value(value: meditationBloc),
+            BlocProvider<AssistantBloc>.value(value: assistantBloc),
+          ],
           child: const ChatBottomSheetWidget(),
         ),
       ),
