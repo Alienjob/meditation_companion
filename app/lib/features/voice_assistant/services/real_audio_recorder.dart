@@ -75,6 +75,9 @@ class RealAudioRecorder implements AudioRecorder {
   String? _currentRecordingPath;
   BytesBuilder? _bytesBuilder;
 
+  Stopwatch? _recordingStopwatch;
+  DateTime? _lastDurationUpdate;
+
   @override
   AudioRecorderState get currentState => _state;
 
@@ -156,6 +159,21 @@ class RealAudioRecorder implements AudioRecorder {
         }
       }
 
+      final finalDuration = _recordingStopwatch?.elapsed;
+      _recordingStopwatch?.stop();
+      _recordingStopwatch = null;
+      _lastDurationUpdate = null;
+
+      // Emit state with recorded data before transitioning to idle
+      _emitState(
+        AudioRecorderState(
+          status: AudioRecorderStatus.finalizingBuffered,
+          mode: AudioRecorderMode.buffered,
+          recordedData: data,
+          recordingDuration: finalDuration,
+        ),
+      );
+
       _emitState(AudioRecorderState.idle());
       _resetBuffer();
       return data;
@@ -218,6 +236,9 @@ class RealAudioRecorder implements AudioRecorder {
     } finally {
       await subscription?.cancel();
       _recordingSubscription = null;
+      _recordingStopwatch?.stop();
+      _recordingStopwatch = null;
+      _lastDurationUpdate = null;
       _resetBuffer();
     }
 
@@ -269,10 +290,13 @@ class RealAudioRecorder implements AudioRecorder {
         path: targetPath,
       );
       _activeMode = AudioRecorderMode.buffered;
+      _recordingStopwatch = Stopwatch()..start();
+      _lastDurationUpdate = DateTime.now();
       _emitState(
         _state.copyWith(
           status: AudioRecorderStatus.recordingBuffered,
           mode: AudioRecorderMode.buffered,
+          recordingDuration: Duration.zero,
         ),
       );
     } catch (error, stackTrace) {
@@ -304,6 +328,8 @@ class RealAudioRecorder implements AudioRecorder {
 
       _activeMode = AudioRecorderMode.buffered;
       _recordingClosed = Completer<void>();
+      _recordingStopwatch = Stopwatch()..start();
+      _lastDurationUpdate = DateTime.now();
       _recorderDebug(
         'RealAudioRecorder: buffered recorder startStream resolved',
       );
@@ -313,6 +339,7 @@ class RealAudioRecorder implements AudioRecorder {
           final builder = _bytesBuilder;
           if (builder == null) return;
           builder.add(chunk);
+          _updateRecordingDuration();
         },
         cancelOnError: true,
         onError: (error, stackTrace) {
@@ -337,6 +364,7 @@ class RealAudioRecorder implements AudioRecorder {
         _state.copyWith(
           status: AudioRecorderStatus.recordingBuffered,
           mode: AudioRecorderMode.buffered,
+          recordingDuration: Duration.zero,
         ),
       );
     } catch (error, stackTrace) {
@@ -369,6 +397,8 @@ class RealAudioRecorder implements AudioRecorder {
 
       _activeMode = AudioRecorderMode.streaming;
       _recordingClosed = Completer<void>();
+      _recordingStopwatch = Stopwatch()..start();
+      _lastDurationUpdate = DateTime.now();
       _recorderDebug(
         'RealAudioRecorder: recorder.startStream resolved (mode=$_activeMode)',
       );
@@ -379,6 +409,7 @@ class RealAudioRecorder implements AudioRecorder {
           if (controller != null && !controller.isClosed) {
             controller.add(chunk);
           }
+          _updateRecordingDuration();
         },
         cancelOnError: true,
         onError: (error, stackTrace) {
@@ -403,6 +434,7 @@ class RealAudioRecorder implements AudioRecorder {
         _state.copyWith(
           status: AudioRecorderStatus.streamingActive,
           mode: AudioRecorderMode.streaming,
+          recordingDuration: Duration.zero,
         ),
       );
     } catch (error, stackTrace) {
@@ -418,6 +450,25 @@ class RealAudioRecorder implements AudioRecorder {
         AudioRecorderException('Failed to start recording: $error'),
         stackTrace,
       );
+    }
+  }
+
+  void _updateRecordingDuration() {
+    final stopwatch = _recordingStopwatch;
+    final lastUpdate = _lastDurationUpdate;
+    if (stopwatch == null || lastUpdate == null) return;
+
+    final now = DateTime.now();
+    final timeSinceLastUpdate = now.difference(lastUpdate);
+
+    // Throttle updates to once per 100ms
+    if (timeSinceLastUpdate.inMilliseconds < 100) return;
+
+    _lastDurationUpdate = now;
+    final elapsed = stopwatch.elapsed;
+
+    if (_activeMode != AudioRecorderMode.none) {
+      _emitState(_state.copyWith(recordingDuration: elapsed));
     }
   }
 
