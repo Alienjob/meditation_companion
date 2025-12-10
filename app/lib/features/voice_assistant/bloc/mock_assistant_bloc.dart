@@ -36,7 +36,7 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<StreamingActivityChanged>(_onStreamingActivityChanged);
     on<UserMessageTranscribed>(_onUserMessageTranscribed);
     on<UpdateRecordingDuration>(_onUpdateRecordingDuration);
-    
+
     // Debug events
     on<DebugConnect>(_onDebugConnect);
     on<DebugConnectionError>(_onDebugConnectionError);
@@ -45,7 +45,7 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<DebugStartResponding>(_onDebugStartResponding);
     on<DebugFinishResponding>(_onDebugFinishResponding);
     on<DebugForceReady>(_onDebugForceReady);
-    
+
     // Start in ready state
     add(ClientConnected());
   }
@@ -120,7 +120,7 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
 
   void _simulateResponse() {
     final itemId = 'mock_${DateTime.now().millisecondsSinceEpoch}';
-    
+
     // Send mock text
     add(ResponseTextReceived(
       itemId: itemId,
@@ -149,12 +149,12 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   }) {
     final numSamples = durationSeconds * sampleRate;
     final samples = Int16List(numSamples);
-    
+
     for (var i = 0; i < numSamples; i++) {
       // Generate random value between -32768 and 32767 (16-bit audio)
       samples[i] = (_random.nextDouble() * 65536 - 32768).round();
     }
-    
+
     return samples.buffer.asUint8List();
   }
 

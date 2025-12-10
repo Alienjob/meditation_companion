@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/features/auth/bloc/auth_bloc.dart';
@@ -9,6 +10,7 @@ import '../widgets/chat_bottom_sheet_widget.dart';
 import '../widgets/ambient_sounds_bottom_sheet_widget.dart';
 import '../widgets/ambient_sounds_panel.dart';
 import '../../voice_assistant/widgets/mic_button/simple_mic_demo.dart';
+import '../../voice_assistant/widgets/debug_assistant_panel.dart';
 
 class MeditationSessionScreen extends StatelessWidget {
   const MeditationSessionScreen({super.key});
@@ -85,8 +87,10 @@ class _MicSurface extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            SimpleMicDemo(),
+          children: [
+            if (kDebugMode) const DebugAssistantPanel(),
+            if (kDebugMode) const SizedBox(height: 16),
+            const SimpleMicDemo(),
           ],
         ),
       ),

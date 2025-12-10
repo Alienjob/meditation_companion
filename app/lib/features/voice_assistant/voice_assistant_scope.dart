@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/config/env_config.dart';
@@ -13,6 +14,8 @@ import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 import '../meditation/services/audio_service.dart';
 import 'bloc/assistant_bloc.dart';
 import 'bloc/assistant_event.dart';
+import 'bloc/assistant_state.dart';
+import 'bloc/mock_assistant_bloc.dart';
 import 'repository/voice_assistant_repository.dart';
 import 'services/audio_recorder.dart';
 import 'tools/voice_assistant_tools.dart';
@@ -35,7 +38,7 @@ class VoiceAssistantScope extends StatefulWidget {
 class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
   late final RealtimeClient _client;
   VoiceAssistantRepository? _repository;
-  AssistantBloc? _assistantBloc;
+  Bloc<AssistantEvent, AssistantState>? _assistantBloc;
   ConnectivityCubit? _connectivityCubit;
   bool _initialized = false;
 
@@ -78,11 +81,17 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
     final analyticsService = context.read<AnalyticsService>();
 
     _repository = VoiceAssistantRepository(_client);
-    _assistantBloc = AssistantBloc(
-      audioService: audioService,
-      recorder: recorder,
-      client: _client,
-    );
+
+    // Use MockAssistantBloc in debug mode for testing with debug events
+    if (kDebugMode) {
+      _assistantBloc = MockAssistantBloc();
+    } else {
+      _assistantBloc = AssistantBloc(
+        audioService: audioService,
+        recorder: recorder,
+        client: _client,
+      );
+    }
 
     // Initialize connectivity monitoring for services with ConnectivityMixin
     final servicesWithConnectivity = <String, dynamic>{};
@@ -264,9 +273,10 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
       return widget.child;
     }
 
+    // Provide the bloc with base Bloc type to support both AssistantBloc and MockAssistantBloc
     Widget child = RepositoryProvider<VoiceAssistantRepository>.value(
       value: repository,
-      child: BlocProvider<AssistantBloc>.value(
+      child: BlocProvider<Bloc<AssistantEvent, AssistantState>>.value(
         value: assistantBloc,
         child: widget.child,
       ),
