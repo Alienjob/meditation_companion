@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:meditation_companion/features/voice_assistant/bloc/mock_assistant_bloc.dart';
 import '../bloc/assistant_event.dart';
 import '../bloc/assistant_state.dart';
 import '../bloc/debug_assistant_event.dart';
+import '../services/audio_recorder.dart';
 
 /// Debug panel for manually controlling assistant state
 ///
@@ -14,11 +14,9 @@ class DebugAssistantPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => MockAssistantBloc(),
-      child: BlocBuilder<MockAssistantBloc, AssistantState>(
-        builder: (context, state) {
-          return Card(
+    return BlocBuilder<Bloc<AssistantEvent, AssistantState>, AssistantState>(
+      builder: (context, state) {
+        return Card(
             margin: const EdgeInsets.all(8),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -50,7 +48,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Ready',
                         Colors.green,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugForceReady()),
                       ),
                       _buildButton(
@@ -58,14 +56,14 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Connecting',
                         Colors.blue,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugConnect()),
                       ),
                       _buildButton(
                         context,
                         'Error',
                         Colors.red,
-                        () => context.read<MockAssistantBloc>().add(
+                        () => context.read<Bloc<AssistantEvent, AssistantState>>().add(
                               const DebugConnectionError(
                                   'Debug connection error'),
                             ),
@@ -75,7 +73,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Timeout',
                         Colors.orange,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugNetworkTimeout()),
                       ),
                       _buildButton(
@@ -83,7 +81,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Rate Limit',
                         Colors.amber,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugRateLimit()),
                       ),
                     ],
@@ -100,7 +98,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Start Recording',
                         Colors.red,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(StartRecordingUserAudioInput()),
                       ),
                       _buildButton(
@@ -108,7 +106,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Stop Recording',
                         Colors.deepOrange,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(const StopRecordingUserAudioInput()),
                       ),
                       _buildButton(
@@ -116,7 +114,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Send Buffered',
                         Colors.indigo,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(SendRecordedAudio()),
                       ),
                       _buildButton(
@@ -124,13 +122,14 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Clear Audio',
                         Colors.grey,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(ClearRecordedAudio()),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text('Streaming & VAD:', style: TextStyle(fontSize: 12)),
+                  const Text('Streaming & VAD:',
+                      style: TextStyle(fontSize: 12)),
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 4,
@@ -138,18 +137,23 @@ class DebugAssistantPanel extends StatelessWidget {
                     children: [
                       _buildButton(
                         context,
-                        state.streamingDesired ? 'Streaming ON' : 'Streaming OFF',
-                        state.streamingDesired ? Colors.deepPurple : Colors.blueGrey,
-                        () => context
-                            .read<MockAssistantBloc>()
-                            .add(ToggleStreamingMode(!state.streamingDesired)),
+                        state.recorderState.mode == AudioRecorderMode.streaming
+                            ? 'Streaming ON'
+                            : 'Streaming OFF',
+                        state.recorderState.mode == AudioRecorderMode.streaming
+                            ? Colors.deepPurple
+                            : Colors.blueGrey,
+                        () => context.read<Bloc<AssistantEvent, AssistantState>>().add(
+                            ToggleStreamingMode(
+                                state.recorderState.mode !=
+                                    AudioRecorderMode.streaming)),
                       ),
                       _buildButton(
                         context,
                         'VAD Speech Start',
                         Colors.cyan,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(ServerVadSpeechStarted()),
                       ),
                       _buildButton(
@@ -157,7 +161,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'VAD Speech Stop',
                         Colors.lightBlue,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(ServerVadSpeechStopped()),
                       ),
                     ],
@@ -174,7 +178,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Start Responding',
                         Colors.purple,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugStartResponding()),
                       ),
                       _buildButton(
@@ -182,7 +186,7 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Finish Response',
                         Colors.teal,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(DebugFinishResponding()),
                       ),
                       _buildButton(
@@ -190,17 +194,16 @@ class DebugAssistantPanel extends StatelessWidget {
                         'Interrupt',
                         Colors.pink,
                         () => context
-                            .read<MockAssistantBloc>()
+                            .read<Bloc<AssistantEvent, AssistantState>>()
                             .add(InterruptResponse()),
                       ),
                     ],
                   ),
-                ],
-              ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -265,7 +268,7 @@ class DebugAssistantPanel extends StatelessWidget {
     if (state.clientStatus == ClientStatus.rateLimited) return Colors.amber;
     if (state.clientStatus == ClientStatus.connecting) return Colors.blue;
     if (state.responseState == ResponseState.responding) return Colors.purple;
-    if (state.userInput == UserInputState.recording) return Colors.orange;
+    if (state.recorderState.isActiveCapture) return Colors.orange;
     return Colors.green;
   }
 
@@ -278,7 +281,7 @@ class DebugAssistantPanel extends StatelessWidget {
     if (state.responseState == ResponseState.responding) {
       return Icons.chat_bubble;
     }
-    if (state.userInput == UserInputState.recording) return Icons.mic;
+    if (state.recorderState.isActiveCapture) return Icons.mic;
     return Icons.check_circle;
   }
 
@@ -295,8 +298,8 @@ class DebugAssistantPanel extends StatelessWidget {
     if (state.responseState == ResponseState.responding) {
       return 'Responding...';
     }
-    if (state.userInput == UserInputState.recording) {
-      if (state.streamingDesired) {
+    if (state.recorderState.isActiveCapture) {
+      if (state.recorderState.mode == AudioRecorderMode.streaming) {
         return 'Recording (Streaming)';
       }
       return 'Recording (Buffered)';
