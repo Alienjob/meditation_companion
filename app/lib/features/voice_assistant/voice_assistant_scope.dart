@@ -84,7 +84,9 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
 
     // Use MockAssistantBloc in debug mode for testing with debug events
     if (kDebugMode) {
-      _assistantBloc = MockAssistantBloc();
+      _assistantBloc = MockAssistantBloc(
+        recorder: recorder,
+      );
     } else {
       _assistantBloc = AssistantBloc(
         audioService: audioService,
@@ -151,7 +153,8 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
     final assistantBloc = _assistantBloc!;
 
     _client.on(RealtimeEventType.all, (event) {
-      print('Realtime event: ${event.type}');
+      logDebug('Realtime event: ${event.type}',
+          domain: 'Voice Assistant', feature: 'VoiceAssistantScope');
     });
 
     _client.on(RealtimeEventType.conversationUpdated, (event) {

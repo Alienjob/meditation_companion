@@ -17,6 +17,7 @@ import 'package:meditation_companion/features/meditation/services/real_audio_ser
 import 'package:meditation_companion/features/meditation/services/real_timer_service.dart';
 import 'package:meditation_companion/features/meditation/services/timer_service.dart';
 import 'package:meditation_companion/features/voice_assistant/services/audio_recorder.dart';
+import 'package:meditation_companion/features/voice_assistant/services/mock_audio_recorder.dart';
 import 'package:meditation_companion/features/voice_assistant/services/real_audio_recorder.dart';
 import 'package:meditation_companion/features/voice_assistant/voice_assistant_scope.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,7 +111,14 @@ class _MainAppState extends State<MainApp> {
     super.initState();
     _timerService = RealTimerService();
     _audioService = RealAudioService();
-    _audioRecorder = RealAudioRecorder();
+    // Use MockAudioRecorder in debug mode for testing
+    if (kDebugMode) {
+      _audioRecorder = MockAudioRecorder(
+        stateTransitionDelay: const Duration(seconds: 1),
+      );
+    } else {
+      _audioRecorder = RealAudioRecorder();
+    }
     _authRepository = SupabaseAuthRepository(Supabase.instance.client);
   }
 
