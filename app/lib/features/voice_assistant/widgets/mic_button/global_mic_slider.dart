@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import 'package:meditation_companion/features/voice_assistant/services/audio_recorder.dart';
 
 // Оптимистичные переходы без прыжков
@@ -48,6 +50,7 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
   bool _isDragging = false;
   AudioRecorderState? _currentState;
   bool _holdingRecording = false;
+  Timer? _holdTimer;
   late final AnimationController _spinnerController;
 
   @override
@@ -61,6 +64,7 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
 
   @override
   void dispose() {
+    _holdTimer?.cancel();
     _spinnerController.dispose();
     super.dispose();
   }
@@ -102,15 +106,17 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
           mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
-              onTap: () {
-                if (streamingState) {
-                  widget.onTurnOffStreaming();
-                  setState(() => _value = 0.0);
-                } else {
-                  widget.onTurnOnStreaming();
-                  setState(() => _value = 1.0);
-                }
-              },
+              onTap: _isDragging
+                  ? null
+                  : () {
+                      if (streamingState) {
+                        widget.onTurnOffStreaming();
+                        setState(() => _value = 0.0);
+                      } else {
+                        widget.onTurnOnStreaming();
+                        setState(() => _value = 1.0);
+                      }
+                    },
               child: Icon(
                 Icons.wifi_tethering,
                 color:
@@ -208,6 +214,8 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
   }
 
   void _handlePointerDown(AudioRecorderState state) {
+    logDebug('PointerDown, state=${state.status}',
+        domain: 'Voice Assistant', feature: 'GlobalMicSlider');
     if (state.status == AudioRecorderStatus.error) {
       widget.onRetry();
       return;
@@ -217,30 +225,83 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
       return;
     }
     _holdingRecording = true;
-    widget.onTurnOnRecording();
+
+    // Start recording only after 1 second hold to avoid collision with swipe
+    _holdTimer?.cancel();
+    _holdTimer = Timer(const Duration(seconds: 1), () {
+      if (_holdingRecording && mounted) {
+        logDebug('Timer fired, calling onTurnOnRecording',
+            domain: 'Voice Assistant', feature: 'GlobalMicSlider');
+        widget.onTurnOnRecording();
+      }
+    });
   }
 
   void _handlePointerUp(AudioRecorderState state) {
+    logDebug(
+      'PointerUp, state=${state.status}, holding=$_holdingRecording, dragging=$_isDragging',
+      domain: 'Voice Assistant',
+      feature: 'GlobalMicSlider',
+    );
+    _holdTimer?.cancel();
+
+    // If user is dragging, let SliderEnd handle the logic
+    // PointerUp fires before SliderEnd, so we defer the decision
+    if (_isDragging) {
+      logDebug('Still dragging, deferring to SliderEnd',
+          domain: 'Voice Assistant', feature: 'GlobalMicSlider');
+      return;
+    }
+
     if (_holdingRecording) {
-      widget.onTurnOffRecording();
+      // Only stop recording if it actually started
+      if (state.status == AudioRecorderStatus.recordingBuffered ||
+          state.status == AudioRecorderStatus.preparingBuffered) {
+        logDebug('Calling onTurnOffRecording',
+            domain: 'Voice Assistant', feature: 'GlobalMicSlider');
+        widget.onTurnOffRecording();
+      }
       _holdingRecording = false;
     }
   }
 
   void _handleSliderEnd(double value, AudioRecorderState state) {
-    if (value >= 0.6) {
+    logDebug(
+      'SliderEnd, value=$value, state=${state.status}, holding=$_holdingRecording',
+      domain: 'Voice Assistant',
+      feature: 'GlobalMicSlider',
+    );
+    _holdTimer?.cancel();
+
+    final switchingToStreaming = value >= 0.6;
+
+    if (switchingToStreaming) {
+      logDebug('Switching to streaming',
+          domain: 'Voice Assistant', feature: 'GlobalMicSlider');
       _value = 1.0;
       widget.onTurnOnStreaming();
+      // Don't call onTurnOffRecording - upgrade will handle stopping buffered recording
     } else {
+      logDebug('Ending drag at low value',
+          domain: 'Voice Assistant', feature: 'GlobalMicSlider');
       _value = 0.0;
       if (_isStreamingStatus(state.status)) {
         widget.onTurnOffStreaming();
       }
+
+      // Only stop buffered recording if not switching to streaming
+      if (_holdingRecording) {
+        // Only stop recording if it actually started
+        if (state.status == AudioRecorderStatus.recordingBuffered ||
+            state.status == AudioRecorderStatus.preparingBuffered) {
+          logDebug('Calling onTurnOffRecording',
+              domain: 'Voice Assistant', feature: 'GlobalMicSlider');
+          widget.onTurnOffRecording();
+        }
+      }
     }
-    if (_holdingRecording) {
-      widget.onTurnOffRecording();
-      _holdingRecording = false;
-    }
+
+    _holdingRecording = false;
     setState(() {});
   }
 
