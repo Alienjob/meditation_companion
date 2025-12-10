@@ -18,6 +18,8 @@ class AudioRecorderState {
     required this.status,
     required this.mode,
     this.message,
+    this.recordingDuration,
+    this.recordedData,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 
@@ -25,11 +27,15 @@ class AudioRecorderState {
       : status = AudioRecorderStatus.idle,
         mode = AudioRecorderMode.none,
         message = null,
+        recordingDuration = null,
+        recordedData = null,
         timestamp = DateTime.now();
 
   final AudioRecorderStatus status;
   final AudioRecorderMode mode;
   final String? message;
+  final Duration? recordingDuration;
+  final Uint8List? recordedData;
   final DateTime timestamp;
 
   bool get isBusy =>
@@ -44,11 +50,19 @@ class AudioRecorderState {
     AudioRecorderMode? mode,
     String? message,
     bool clearMessage = false,
+    Duration? recordingDuration,
+    bool clearDuration = false,
+    Uint8List? recordedData,
+    bool clearRecordedData = false,
   }) {
     return AudioRecorderState(
       status: status ?? this.status,
       mode: mode ?? this.mode,
       message: clearMessage ? null : (message ?? this.message),
+      recordingDuration:
+          clearDuration ? null : (recordingDuration ?? this.recordingDuration),
+      recordedData:
+          clearRecordedData ? null : (recordedData ?? this.recordedData),
       timestamp: DateTime.now(),
     );
   }
