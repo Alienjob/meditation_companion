@@ -15,7 +15,7 @@ class AssistantState extends Equatable {
   final Duration recordingDuration;
   final String? lastError;
   final bool streamingDesired;
-  final bool streamingActive;
+  final bool streamedSoundContainsVoice;
 
   static const maxRecordingDuration = Duration(seconds: 30);
 
@@ -27,7 +27,7 @@ class AssistantState extends Equatable {
     this.recordingDuration = const Duration(),
     this.lastError,
     this.streamingDesired = false,
-    this.streamingActive = false,
+    this.streamedSoundContainsVoice = false,
   });
 
   bool get canRecord =>
@@ -48,7 +48,7 @@ class AssistantState extends Equatable {
     Duration? recordingDuration,
     String? Function()? lastError,
     bool? streamingDesired,
-    bool? streamingActive,
+    bool? streamedSoundContainsVoice,
   }) {
     return AssistantState(
       clientStatus: clientStatus ?? this.clientStatus,
@@ -59,7 +59,7 @@ class AssistantState extends Equatable {
       recordingDuration: recordingDuration ?? this.recordingDuration,
       lastError: lastError != null ? lastError() : this.lastError,
       streamingDesired: streamingDesired ?? this.streamingDesired,
-      streamingActive: streamingActive ?? this.streamingActive,
+      streamedSoundContainsVoice: streamedSoundContainsVoice ?? this.streamedSoundContainsVoice,
     );
   }
 
@@ -72,6 +72,6 @@ class AssistantState extends Equatable {
         recordingDuration,
         lastError,
         streamingDesired,
-        streamingActive,
+        streamedSoundContainsVoice,
       ];
 }

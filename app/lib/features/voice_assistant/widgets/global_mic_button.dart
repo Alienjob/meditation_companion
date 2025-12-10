@@ -191,7 +191,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
             }
             final colors = Theme.of(context).colorScheme;
 
-            final streamingActive = assistantState.streamingActive ||
+            final streamingActive = assistantState.streamedSoundContainsVoice ||
                 recorderState.status == AudioRecorderStatus.streamingActive ||
                 recorderState.status ==
                     AudioRecorderStatus.preparingStreaming ||

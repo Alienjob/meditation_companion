@@ -210,7 +210,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         clientStatus: ClientStatus.error,
         lastError: () => 'Failed to start streaming: $error',
         streamingDesired: false,
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
       ));
       return;
     }
@@ -219,7 +219,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       userInput: UserInputState.recording,
       recordedAudio: () => null,
       streamingDesired: true,
-      streamingActive: false,
+      streamedSoundContainsVoice: false,
     ));
   }
 
@@ -279,7 +279,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       emit(state.copyWith(
         userInput: UserInputState.recording,
         recordingDuration: Duration.zero,
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
       ));
 
       _recordingTimer = Timer.periodic(
@@ -305,7 +305,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
         lastError: () => error.toString(),
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
       ));
     } finally {
       if (!startCompleter.isCompleted) {
@@ -350,7 +350,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
           recordedAudio: () => null,
           recordingDuration: Duration.zero,
           streamingDesired: event.userRequested ? false : true,
-          streamingActive: false,
+          streamedSoundContainsVoice: false,
           responseState:
               hasBufferedAudio ? ResponseState.responding : state.responseState,
         ));
@@ -382,7 +382,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         clientStatus: ClientStatus.error,
         lastError: () => error.toString(),
         responseState: ResponseState.idle,
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
       ));
       if (state.streamingDesired && !event.userRequested) {
         unawaited(_restartStreaming());
@@ -454,7 +454,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       return;
     }
 
-    if (state.streamingActive) {
+    if (state.streamedSoundContainsVoice) {
       await _stopStreamingCapture();
     }
 
@@ -463,7 +463,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     if (state.streamingDesired && wasRecording) {
       emit(state.copyWith(
         streamingDesired: false,
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
         userInput: UserInputState.idle,
         recordingDuration: Duration.zero,
         recordedAudio: () => null,
@@ -474,7 +474,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       return;
     }
 
-    emit(state.copyWith(streamingDesired: false, streamingActive: false));
+    emit(state.copyWith(streamingDesired: false, streamedSoundContainsVoice: false));
   }
 
   void _onServerVadSpeechStarted(
@@ -482,8 +482,8 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     _debug(_featureStreaming, 'Server VAD detected speech start');
-    if (!state.streamingActive) {
-      emit(state.copyWith(streamingActive: true));
+    if (!state.streamedSoundContainsVoice) {
+      emit(state.copyWith(streamedSoundContainsVoice: true));
     }
   }
 
@@ -499,7 +499,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       );
       emit(state.copyWith(
         responseState: ResponseState.responding,
-        streamingActive: false,
+        streamedSoundContainsVoice: false,
       ));
       unawaited(() async {
         try {
@@ -681,18 +681,18 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StreamingActivityChanged event,
     Emitter<AssistantState> emit,
   ) {
-    if (event.isActive && !state.streamingActive) {
+    if (event.isActive && !state.streamedSoundContainsVoice) {
       _debug(
         _featureStreaming,
         'Streaming activity detected; marking active',
       );
-      emit(state.copyWith(streamingActive: true));
-    } else if (!event.isActive && state.streamingActive) {
+      emit(state.copyWith(streamedSoundContainsVoice: true));
+    } else if (!event.isActive && state.streamedSoundContainsVoice) {
       _debug(
         _featureStreaming,
         'Streaming inactivity reported; marking inactive',
       );
-      emit(state.copyWith(streamingActive: false));
+      emit(state.copyWith(streamedSoundContainsVoice: false));
     }
   }
 }
