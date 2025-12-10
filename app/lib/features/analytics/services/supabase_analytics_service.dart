@@ -5,12 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/connectivity/connectivity_mixin.dart';
 import '../models/analytics_event.dart';
 import '../models/event_queue.dart';
 import 'analytics_service.dart';
 
 /// Implements analytics service that sends events to Supabase
-class SupabaseAnalyticsService implements AnalyticsService {
+class SupabaseAnalyticsService
+    with ConnectivityMixin
+    implements AnalyticsService {
   final SupabaseClient _supabase;
   final SharedPreferences _prefs;
   final _uuid = const Uuid();
@@ -100,22 +103,36 @@ class SupabaseAnalyticsService implements AnalyticsService {
       _anonymousUserId = null;
     }
 
-    await _supabase.from('app_sessions').insert({
-      'id': sessionId,
-      'user_id': actualUserId,
-      'start_time': DateTime.now().toIso8601String(),
-      'device_info': deviceInfo,
-      'app_version': appVersion,
-    });
+    try {
+      await _supabase.from('app_sessions').insert({
+        'id': sessionId,
+        'user_id': actualUserId,
+        'start_time': DateTime.now().toIso8601String(),
+        'device_info': deviceInfo,
+        'app_version': appVersion,
+      });
+      updateAvailability(true);
+    } catch (e) {
+      updateAvailability(false);
+      print('Error starting session: $e');
+      // Don't rethrow - allow app to continue without analytics
+    }
 
     return sessionId!;
   }
 
   @override
   Future<void> endSession(String sessionId) async {
-    await _supabase.from('app_sessions').update({
-      'end_time': DateTime.now().toIso8601String(),
-    }).eq('id', sessionId);
+    try {
+      await _supabase.from('app_sessions').update({
+        'end_time': DateTime.now().toIso8601String(),
+      }).eq('id', sessionId);
+      updateAvailability(true);
+    } catch (e) {
+      updateAvailability(false);
+      print('Error ending session: $e');
+      // Don't rethrow - allow app to continue
+    }
 
     // Ensure all remaining events are uploaded
     await uploadPendingEvents();
@@ -172,12 +189,14 @@ class SupabaseAnalyticsService implements AnalyticsService {
 
       // Remove successfully uploaded events
       _queue.removeEvents(batch);
+      updateAvailability(true);
     } catch (e) {
+      updateAvailability(false);
       print('Error uploading events: $e');
       // Mark the current batch as failed and increment retry count
       final currentBatch = _queue.getNextBatch(_maxBatchSize);
       _queue.markAsFailed(currentBatch);
-      rethrow;
+      // Don't rethrow - allow app to continue
     } finally {
       await _persistQueue();
       _isUploading = false;
@@ -194,8 +213,10 @@ class SupabaseAnalyticsService implements AnalyticsService {
   Future<bool> isReady() async {
     try {
       await _supabase.from('events').select().limit(1);
+      updateAvailability(true);
       return true;
     } catch (e) {
+      updateAvailability(false);
       return false;
     }
   }
