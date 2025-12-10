@@ -88,8 +88,82 @@ class DebugAssistantPanel extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  const Text('Response State:', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 12),
+                  const Text('User Input:', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      _buildButton(
+                        context,
+                        'Start Recording',
+                        Colors.red,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(StartRecordingUserAudioInput()),
+                      ),
+                      _buildButton(
+                        context,
+                        'Stop Recording',
+                        Colors.deepOrange,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(const StopRecordingUserAudioInput()),
+                      ),
+                      _buildButton(
+                        context,
+                        'Send Buffered',
+                        Colors.indigo,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(SendRecordedAudio()),
+                      ),
+                      _buildButton(
+                        context,
+                        'Clear Audio',
+                        Colors.grey,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(ClearRecordedAudio()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Streaming & VAD:', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      _buildButton(
+                        context,
+                        state.streamingDesired ? 'Streaming ON' : 'Streaming OFF',
+                        state.streamingDesired ? Colors.deepPurple : Colors.blueGrey,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(ToggleStreamingMode(!state.streamingDesired)),
+                      ),
+                      _buildButton(
+                        context,
+                        'VAD Speech Start',
+                        Colors.cyan,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(ServerVadSpeechStarted()),
+                      ),
+                      _buildButton(
+                        context,
+                        'VAD Speech Stop',
+                        Colors.lightBlue,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(ServerVadSpeechStopped()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Response:', style: TextStyle(fontSize: 12)),
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 4,
@@ -110,6 +184,14 @@ class DebugAssistantPanel extends StatelessWidget {
                         () => context
                             .read<MockAssistantBloc>()
                             .add(DebugFinishResponding()),
+                      ),
+                      _buildButton(
+                        context,
+                        'Interrupt',
+                        Colors.pink,
+                        () => context
+                            .read<MockAssistantBloc>()
+                            .add(InterruptResponse()),
                       ),
                     ],
                   ),
@@ -169,10 +251,10 @@ class DebugAssistantPanel extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: const TextStyle(fontSize: 11),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
       ),
       child: Text(label),
     );
