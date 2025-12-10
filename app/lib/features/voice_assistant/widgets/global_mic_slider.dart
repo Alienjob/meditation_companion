@@ -56,11 +56,7 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
     _spinnerController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
-    )..addListener(() {
-        if (mounted) {
-          setState(() {});
-        }
-      });
+    );
   }
 
   @override
@@ -86,16 +82,21 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
 
         final presentation = _mapPresentation(state, colors);
 
-        if (presentation.showSpinner) {
-          if (!_spinnerController.isAnimating) {
-            _spinnerController.repeat();
+        // Update spinner animation state after frame is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          if (presentation.showSpinner) {
+            if (!_spinnerController.isAnimating) {
+              _spinnerController.repeat();
+            }
+          } else {
+            if (_spinnerController.isAnimating) {
+              _spinnerController.stop();
+              _spinnerController.value = 0;
+            }
           }
-        } else {
-          if (_spinnerController.isAnimating) {
-            _spinnerController.stop();
-            _spinnerController.value = 0;
-          }
-        }
+        });
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -123,16 +124,23 @@ class _GlobalMicSliderState extends State<GlobalMicSlider>
               height: _kTrackHeight + _kThumbDiameter / 2,
               child: RotatedBox(
                 quarterTurns: -1,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: _kTrackThickness,
-                    activeTrackColor: colors.primary,
-                    inactiveTrackColor: colors.surfaceVariant.withOpacity(0.6),
-                    trackShape: const _FullTrackShape(),
-                    thumbShape:
-                        _MicThumbShape(presentation, _spinnerController.value),
-                    overlayShape: SliderComponentShape.noOverlay,
-                  ),
+                child: AnimatedBuilder(
+                  animation: _spinnerController,
+                  builder: (context, child) {
+                    return SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: _kTrackThickness,
+                        activeTrackColor: colors.primary,
+                        inactiveTrackColor:
+                            colors.surfaceVariant.withOpacity(0.6),
+                        trackShape: const _FullTrackShape(),
+                        thumbShape: _MicThumbShape(
+                            presentation, _spinnerController.value),
+                        overlayShape: SliderComponentShape.noOverlay,
+                      ),
+                      child: child!,
+                    );
+                  },
                   child: Listener(
                     onPointerDown: (_) => _handlePointerDown(state),
                     onPointerUp: (_) => _handlePointerUp(state),
