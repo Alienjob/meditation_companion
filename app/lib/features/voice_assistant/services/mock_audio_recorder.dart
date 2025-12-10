@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:meditation_companion/core/logging/app_logger.dart';
+
 import './audio_recorder.dart';
 
 /// Mock implementation of AudioRecorder for testing and development
@@ -41,6 +43,8 @@ class MockAudioRecorder implements AudioRecorder {
 
   @override
   Future<void> startRecording() async {
+    logDebug('startRecording called',
+        domain: 'Voice Assistant', feature: 'MockAudioRecorder');
     if (_isRecording) {
       throw StateError('Recording already in progress');
     }
@@ -69,6 +73,8 @@ class MockAudioRecorder implements AudioRecorder {
 
   @override
   Future<Uint8List> stopRecording() async {
+    logDebug('stopRecording called',
+        domain: 'Voice Assistant', feature: 'MockAudioRecorder');
     if (!_isRecording) {
       throw StateError('No recording in progress');
     }
