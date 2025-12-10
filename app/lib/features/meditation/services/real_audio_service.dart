@@ -23,6 +23,8 @@ class RealAudioService implements AudioService {
   String? _currentVoiceItemId;
   bool _voiceStreamEnded = false;
   final _voiceStateController = StreamController<VoiceStreamState>.broadcast();
+  final List<_QueuedVoiceChunk> _pendingVoiceChunks = [];
+  Timer? _pendingFlushTimer;
 
   @override
   Stream<Map<String, AmbientSoundSettings>> get soundSettingsStream =>
@@ -176,6 +178,9 @@ class RealAudioService implements AudioService {
       }
       _handles.clear();
       _soundSettings.clear();
+      _pendingFlushTimer?.cancel();
+      _pendingFlushTimer = null;
+      _pendingVoiceChunks.clear();
       await _settingsController.close();
       await _voiceStateController.close();
     } catch (e) {
@@ -198,6 +203,15 @@ class RealAudioService implements AudioService {
     }
 
     if (_voiceStreamEnded && audioData.isNotEmpty) {
+      final handleActive =
+          _voiceHandle != null && _soloud.getIsValidVoiceHandle(_voiceHandle!);
+      if (handleActive) {
+        _logVoice(
+          '[${DateTime.now().toIso8601String()}] Queuing new audio for item=$itemId while previous clip finishes',
+        );
+        _queueVoiceChunk(itemId, audioData);
+        return;
+      }
       _logVoice(
         '[${DateTime.now().toIso8601String()}] Received new audio after end marker; resetting stream for item=$itemId',
       );
@@ -267,6 +281,9 @@ class RealAudioService implements AudioService {
       } catch (_) {}
     }
     _currentVoiceItemId = null;
+    _pendingFlushTimer?.cancel();
+    _pendingFlushTimer = null;
+    _pendingVoiceChunks.clear();
     if (!_voiceStateController.isClosed) {
       _voiceStateController.add(VoiceStreamState.idle);
     }
@@ -324,4 +341,69 @@ class RealAudioService implements AudioService {
       _voiceStateController.add(VoiceStreamState.idle);
     }
   }
+
+  void _queueVoiceChunk(String itemId, Uint8List audioData) {
+    _pendingVoiceChunks
+        .add(_QueuedVoiceChunk(itemId, Uint8List.fromList(audioData)));
+    _schedulePendingFlush();
+  }
+
+  void _schedulePendingFlush() {
+    _pendingFlushTimer ??=
+        Timer(const Duration(milliseconds: 50), _tryFlushPendingChunks);
+  }
+
+  Future<void> _tryFlushPendingChunks() async {
+    _pendingFlushTimer?.cancel();
+    _pendingFlushTimer = null;
+
+    final handleActive =
+        _voiceHandle != null && _soloud.getIsValidVoiceHandle(_voiceHandle!);
+
+    if (handleActive) {
+      _pendingFlushTimer =
+          Timer(const Duration(milliseconds: 50), _tryFlushPendingChunks);
+      return;
+    }
+
+    await _playQueuedVoiceChunks();
+  }
+
+  Future<void> _playQueuedVoiceChunks() async {
+    if (_pendingVoiceChunks.isEmpty) return;
+
+    final queued = List<_QueuedVoiceChunk>.from(_pendingVoiceChunks);
+    _pendingVoiceChunks.clear();
+
+    await _resetVoiceStream();
+    await _ensureVoiceStream();
+
+    for (final chunk in queued) {
+      _currentVoiceItemId = chunk.itemId;
+      _soloud.addAudioDataStream(_voiceStream!, chunk.bytes);
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Flushing queued audio for item=${chunk.itemId} bytes=${chunk.bytes.length}',
+      );
+    }
+
+    _voiceStreamEnded = false;
+
+    if (_voiceHandle == null || !_soloud.getIsValidVoiceHandle(_voiceHandle!)) {
+      _voiceHandle = await _soloud.play(_voiceStream!, volume: 1);
+      _logVoice(
+        '[${DateTime.now().toIso8601String()}] Started playback for queued item=$_currentVoiceItemId handle=$_voiceHandle',
+      );
+    }
+
+    if (!_voiceStateController.isClosed) {
+      _voiceStateController.add(VoiceStreamState.playing);
+    }
+  }
+}
+
+class _QueuedVoiceChunk {
+  final String itemId;
+  final Uint8List bytes;
+
+  _QueuedVoiceChunk(this.itemId, this.bytes);
 }

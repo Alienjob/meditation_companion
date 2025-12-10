@@ -24,6 +24,8 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   StreamSubscription<Uint8List>? _micStreamSubscription;
   Completer<void>? _recordingStartCompleter;
   bool _isStartingRecording = false;
+  bool _shuttingDownStream = false;
+  bool _hasStreamingAudio = false;
 
   static const _domain = 'Voice Assistant';
   static const _featureRecording = 'AssistantBloc Recording';
@@ -91,15 +93,20 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<InterruptResponse>(_onInterruptResponse);
     on<ResponseCompleted>(_onResponseCompleted);
     on<UpdateRecordingDuration>(_onUpdateRecordingDuration);
+    on<StreamingActivityChanged>(_onStreamingActivityChanged);
   }
 
   Future<void> _beginStreamingCapture() async {
     final stream = _recorder.audioStream;
     await _recorder.startStreaming();
+    _hasStreamingAudio = false;
     await _micStreamSubscription?.cancel();
+    _shuttingDownStream = false;
     _micStreamSubscription = stream.listen(
       (chunk) {
         if (chunk.isEmpty) return;
+        _hasStreamingAudio = true;
+        add(const StreamingActivityChanged.active());
         unawaited(
           _client.appendInputAudio(chunk).catchError(
             (error, stackTrace) {
@@ -112,7 +119,40 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       onError: (error, stackTrace) {
         add(ClientError('Streaming error: $error'));
       },
+      onDone: () {
+        _debug(
+          _featureStreaming,
+          'Streaming recorder onDone (shuttingDown=$_shuttingDownStream)',
+        );
+        add(const StreamingActivityChanged.inactive());
+        if (!_shuttingDownStream && state.streamingDesired) {
+          add(const StopRecordingUserAudioInput(userRequested: false));
+        }
+      },
     );
+  }
+
+  Future<void> _stopStreamingCapture() async {
+    _shuttingDownStream = true;
+    await _micStreamSubscription?.cancel();
+    _micStreamSubscription = null;
+    await _recorder.stopStreaming();
+    add(const StreamingActivityChanged.inactive());
+  }
+
+  Future<void> _restartStreaming() async {
+    try {
+      await Future.delayed(const Duration(milliseconds: 50));
+      await _beginStreamingCapture();
+    } catch (error, stackTrace) {
+      _error(
+        _featureStreaming,
+        'Failed to restart streaming: $error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      add(ClientError('Failed to restart streaming: $error'));
+    }
   }
 
   Future<void> _sendBufferedAudioAsStream(Uint8List audioData) async {
@@ -128,6 +168,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       await _client.appendInputAudio(chunk);
       offset += length;
     }
+    _hasStreamingAudio = true;
   }
 
   Future<void> _commitPendingAudioBuffer() async {
@@ -140,6 +181,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     );
     _client.conversation.queueInputAudio(pending);
     _client.inputAudioBuffer = Uint8List(0);
+    _hasStreamingAudio = false;
   }
 
   Future<void> _upgradeRecordingToStreaming(
@@ -167,7 +209,8 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
         lastError: () => 'Failed to start streaming: $error',
-        streamingEnabled: false,
+        streamingDesired: false,
+        streamingActive: false,
       ));
       return;
     }
@@ -175,7 +218,8 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     emit(state.copyWith(
       userInput: UserInputState.recording,
       recordedAudio: () => null,
-      streamingEnabled: true,
+      streamingDesired: true,
+      streamingActive: false,
     ));
   }
 
@@ -202,7 +246,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   ) async {
     _debug(
       _featureRecording,
-      'Start recording requested; streaming=${state.streamingEnabled} canRecord=${state.canRecord}',
+      'Start recording requested; streamingDesired=${state.streamingDesired} canRecord=${state.canRecord}',
     );
     if (!state.canRecord) {
       _debug(
@@ -225,7 +269,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     _recordingStartCompleter = startCompleter;
 
     try {
-      if (state.streamingEnabled) {
+      if (state.streamingDesired) {
         _debug(_featureStreaming, 'Starting streaming recorder');
         await _beginStreamingCapture();
       } else {
@@ -235,6 +279,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       emit(state.copyWith(
         userInput: UserInputState.recording,
         recordingDuration: Duration.zero,
+        streamingActive: false,
       ));
 
       _recordingTimer = Timer.periodic(
@@ -260,6 +305,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       emit(state.copyWith(
         clientStatus: ClientStatus.error,
         lastError: () => error.toString(),
+        streamingActive: false,
       ));
     } finally {
       if (!startCompleter.isCompleted) {
@@ -282,21 +328,40 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     if (state.userInput != UserInputState.recording) return;
 
     try {
-      if (state.streamingEnabled) {
-        await _micStreamSubscription?.cancel();
-        _micStreamSubscription = null;
+      if (state.streamingDesired) {
+        final shouldRestart = state.streamingDesired && !event.userRequested;
+
+        if (event.userRequested) {
+          await _stopStreamingCapture();
+        } else {
+          await _micStreamSubscription?.cancel();
+          _micStreamSubscription = null;
+        }
+
         _debug(_featureStreaming, 'Stopping streaming recorder');
-        await _recorder.stopStreaming();
         _debug(_featureResponse, 'Requesting response after streaming');
+
+        final hasBufferedAudio = _hasStreamingAudio ||
+            _client.inputAudioBuffer.isNotEmpty ||
+            state.recordedAudio != null;
+
         emit(state.copyWith(
           userInput: UserInputState.idle,
           recordedAudio: () => null,
           recordingDuration: Duration.zero,
-          streamingEnabled: false,
-          responseState: ResponseState.responding,
+          streamingDesired: event.userRequested ? false : true,
+          streamingActive: false,
+          responseState:
+              hasBufferedAudio ? ResponseState.responding : state.responseState,
         ));
-        await _commitPendingAudioBuffer();
-        await _client.createResponse();
+        if (hasBufferedAudio) {
+          await _commitPendingAudioBuffer();
+          await _client.createResponse();
+          _hasStreamingAudio = false;
+        }
+        if (shouldRestart) {
+          unawaited(_restartStreaming());
+        }
       } else {
         _debug(_featureRecording, 'Stopping buffered recorder');
         final audioData = await _recorder.stopRecording();
@@ -308,7 +373,7 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       }
     } catch (error, stackTrace) {
       _error(
-        state.streamingEnabled ? _featureStreaming : _featureRecording,
+        state.streamingDesired ? _featureStreaming : _featureRecording,
         'Failed to stop recorder: $error',
         error: error,
         stackTrace: stackTrace,
@@ -317,7 +382,11 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         clientStatus: ClientStatus.error,
         lastError: () => error.toString(),
         responseState: ResponseState.idle,
+        streamingActive: false,
       ));
+      if (state.streamingDesired && !event.userRequested) {
+        unawaited(_restartStreaming());
+      }
     }
   }
 
@@ -361,29 +430,51 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         try {
           await pendingStart.future;
         } catch (_) {
-          // Ignored: start future already completed with error.
+          // Игнорируем: старт уже завершился с ошибкой.
         }
       }
-    }
 
-    final recorderState = _recorder.currentState;
-    final bufferedActive =
-        recorderState.status == AudioRecorderStatus.recordingBuffered ||
-            recorderState.status == AudioRecorderStatus.preparingBuffered ||
-            recorderState.status == AudioRecorderStatus.finalizingBuffered;
+      final recorderState = _recorder.currentState;
+      final bufferedActive =
+          recorderState.status == AudioRecorderStatus.recordingBuffered ||
+              recorderState.status == AudioRecorderStatus.preparingBuffered ||
+              recorderState.status == AudioRecorderStatus.finalizingBuffered;
 
-    final upgradingDuringHold = event.enabled &&
-        !state.streamingEnabled &&
-        (state.userInput == UserInputState.recording ||
-            _isStartingRecording ||
-            bufferedActive);
+      final upgradingDuringHold = !state.streamingDesired &&
+          (state.userInput == UserInputState.recording ||
+              _isStartingRecording ||
+              bufferedActive);
 
-    if (upgradingDuringHold) {
-      await _upgradeRecordingToStreaming(emit);
+      if (upgradingDuringHold) {
+        await _upgradeRecordingToStreaming(emit);
+        return;
+      }
+
+      emit(state.copyWith(streamingDesired: true));
       return;
     }
 
-    emit(state.copyWith(streamingEnabled: event.enabled));
+    if (state.streamingActive) {
+      await _stopStreamingCapture();
+    }
+
+    final wasRecording = state.userInput == UserInputState.recording;
+
+    if (state.streamingDesired && wasRecording) {
+      emit(state.copyWith(
+        streamingDesired: false,
+        streamingActive: false,
+        userInput: UserInputState.idle,
+        recordingDuration: Duration.zero,
+        recordedAudio: () => null,
+        responseState: ResponseState.responding,
+      ));
+      await _commitPendingAudioBuffer();
+      await _client.createResponse();
+      return;
+    }
+
+    emit(state.copyWith(streamingDesired: false, streamingActive: false));
   }
 
   void _onServerVadSpeechStarted(
@@ -391,6 +482,9 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     _debug(_featureStreaming, 'Server VAD detected speech start');
+    if (!state.streamingActive) {
+      emit(state.copyWith(streamingActive: true));
+    }
   }
 
   void _onServerVadSpeechStopped(
@@ -398,8 +492,29 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     _debug(_featureStreaming, 'Server VAD detected speech stop');
-    if (state.streamingEnabled && state.userInput == UserInputState.recording) {
-      add(StopRecordingUserAudioInput());
+    if (state.streamingDesired && state.userInput == UserInputState.recording) {
+      _debug(
+        _featureStreaming,
+        'Server VAD segment ended; committing buffered audio while keeping stream alive',
+      );
+      emit(state.copyWith(
+        responseState: ResponseState.responding,
+        streamingActive: false,
+      ));
+      unawaited(() async {
+        try {
+          await _commitPendingAudioBuffer();
+          await _client.createResponse();
+        } catch (error, stackTrace) {
+          _error(
+            _featureStreaming,
+            'Failed to commit streaming segment: $error',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          add(ClientError(error.toString()));
+        }
+      }());
     }
   }
 
@@ -508,7 +623,14 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     );
 
     await _audioService.stopVoice();
-    await _client.cancelResponse(result.itemId, result.sampleCount);
+    if (result.itemId.isEmpty) {
+      _debug(
+        _featurePlayback,
+        '[${DateTime.now().toIso8601String()}] No active response item to cancel; skipping cancelResponse',
+      );
+    } else {
+      await _client.cancelResponse(result.itemId, result.sampleCount);
+    }
 
     if (_activeResponseItemId != null) {
       _responsesWithAudio.remove(_activeResponseItemId!);
@@ -553,5 +675,24 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     _recordingTimer?.cancel();
     await _micStreamSubscription?.cancel();
     await super.close();
+  }
+
+  void _onStreamingActivityChanged(
+    StreamingActivityChanged event,
+    Emitter<AssistantState> emit,
+  ) {
+    if (event.isActive && !state.streamingActive) {
+      _debug(
+        _featureStreaming,
+        'Streaming activity detected; marking active',
+      );
+      emit(state.copyWith(streamingActive: true));
+    } else if (!event.isActive && state.streamingActive) {
+      _debug(
+        _featureStreaming,
+        'Streaming inactivity reported; marking inactive',
+      );
+      emit(state.copyWith(streamingActive: false));
+    }
   }
 }

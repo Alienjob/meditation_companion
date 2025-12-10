@@ -73,7 +73,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
   }
 
   void _requestStreaming(AssistantState assistantState) {
-    if (_streamingRequested || assistantState.streamingEnabled) return;
+    if (_streamingRequested || assistantState.streamingDesired) return;
     _streamingRequested = true;
     context.read<AssistantBloc>().add(const ToggleStreamingMode(true));
     setState(() {});
@@ -91,7 +91,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
   }
 
   void _onPanStart(AssistantState assistantState) {
-    if (assistantState.streamingEnabled) {
+    if (assistantState.streamingDesired) {
       return;
     }
     unawaited(_startHold(assistantState));
@@ -102,7 +102,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
     if (assistantState.userInput == UserInputState.recording) {
       assistantBloc.add(StopRecordingUserAudioInput());
     }
-    if (assistantState.streamingEnabled) {
+    if (assistantState.streamingDesired) {
       Future.microtask(() {
         assistantBloc.add(const ToggleStreamingMode(false));
       });
@@ -116,11 +116,11 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
 
   void _finishHold(AssistantState assistantState) {
     if (!_isHolding) return;
-    if (assistantState.streamingEnabled || _streamingRequested) {
+    if (assistantState.streamingDesired || _streamingRequested) {
       setState(() {
         _isHolding = false;
         _streamingRequested =
-            _streamingRequested || assistantState.streamingEnabled;
+            _streamingRequested || assistantState.streamingDesired;
         _dragOffset = 0;
       });
       return;
@@ -137,7 +137,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
 
   void _cancelHold(AssistantState assistantState) {
     if (!_isHolding) return;
-    if (assistantState.streamingEnabled || _streamingRequested) {
+    if (assistantState.streamingDesired || _streamingRequested) {
       _stopStreaming(assistantState);
       return;
     }
@@ -152,7 +152,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
   }
 
   Future<void> _handleTapDown(AssistantState assistantState) async {
-    if (!_isHolding && assistantState.streamingEnabled) {
+    if (!_isHolding && assistantState.streamingDesired) {
       _stopStreaming(assistantState);
       return;
     }
@@ -174,7 +174,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
           builder: (context, snapshot) {
             final recorderState = snapshot.data ?? AudioRecorderState.idle();
             final shouldClearStreamingRequest = _streamingRequested &&
-                !assistantState.streamingEnabled &&
+                !assistantState.streamingDesired &&
                 assistantState.userInput != UserInputState.recording &&
                 recorderState.status != AudioRecorderStatus.streamingActive &&
                 recorderState.status !=
@@ -191,6 +191,14 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
             }
             final colors = Theme.of(context).colorScheme;
 
+            final streamingActive = assistantState.streamingActive ||
+                recorderState.status == AudioRecorderStatus.streamingActive ||
+                recorderState.status ==
+                    AudioRecorderStatus.preparingStreaming ||
+                recorderState.status == AudioRecorderStatus.finalizingStreaming;
+            final streamingDesired =
+                assistantState.streamingDesired || _streamingRequested;
+
             final recorderError =
                 recorderState.status == AudioRecorderStatus.error;
             final assistantError =
@@ -198,14 +206,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
                     assistantState.lastError != null;
             final isError = recorderError || assistantError;
 
-            final isStreamingFace =
-                recorderState.mode == AudioRecorderMode.streaming ||
-                    recorderState.status ==
-                        AudioRecorderStatus.preparingStreaming ||
-                    recorderState.status ==
-                        AudioRecorderStatus.finalizingStreaming ||
-                    assistantState.streamingEnabled ||
-                    _streamingRequested;
+            final isStreamingFace = streamingDesired || streamingActive;
             final showSpinner =
                 recorderState.status == AudioRecorderStatus.preparingBuffered ||
                     recorderState.status ==
@@ -228,7 +229,8 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
             final baseColor = _resolveBaseColor(
               colors,
               recorderState,
-              isStreamingFace,
+              streamingDesired,
+              streamingActive,
               isError,
             );
             final iconData = _resolveIcon(
@@ -327,7 +329,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
-                if (!assistantState.streamingEnabled)
+                if (!assistantState.streamingDesired)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: Text(
@@ -339,7 +341,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
                       textAlign: TextAlign.center,
                     ),
                   ),
-                if (assistantState.streamingEnabled)
+                if (assistantState.streamingDesired)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: Text(
@@ -365,6 +367,7 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
   ) {
     return _isHolding &&
         !_streamingRequested &&
+        !assistantState.streamingDesired &&
         assistantState.canRecord &&
         (recorderState.status == AudioRecorderStatus.recordingBuffered ||
             recorderState.status == AudioRecorderStatus.preparingBuffered);
@@ -406,6 +409,9 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
 
     switch (recorderState.status) {
       case AudioRecorderStatus.idle:
+        if (assistantState.streamingDesired) {
+          return ('Streaming armed…', 'Speak to begin');
+        }
         return ('Hold to record', null);
       case AudioRecorderStatus.preparingBuffered:
         return ('Preparing microphone…', null);
@@ -440,16 +446,20 @@ class _GlobalMicButtonState extends State<GlobalMicButton>
   Color _resolveBaseColor(
     ColorScheme colors,
     AudioRecorderState recorderState,
-    bool isStreamingFace,
+    bool streamingDesired,
+    bool streamingActive,
     bool isError,
   ) {
     if (isError) {
       return Colors.red.shade600;
     }
-    if (isStreamingFace ||
+    if (streamingActive ||
         recorderState.status == AudioRecorderStatus.preparingStreaming ||
         recorderState.status == AudioRecorderStatus.finalizingStreaming) {
       return colors.primary;
+    }
+    if (streamingDesired) {
+      return colors.surfaceVariant;
     }
     if (recorderState.status == AudioRecorderStatus.recordingBuffered ||
         recorderState.status == AudioRecorderStatus.preparingBuffered ||

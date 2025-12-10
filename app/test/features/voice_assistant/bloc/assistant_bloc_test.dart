@@ -92,8 +92,8 @@ void main() {
           ..add(const ToggleStreamingMode(false));
       },
       expect: () => [
-        const AssistantState(streamingEnabled: true),
-        const AssistantState(streamingEnabled: false),
+        const AssistantState(streamingDesired: true),
+        const AssistantState(streamingDesired: false, streamingActive: false),
       ],
     );
 
@@ -180,7 +180,7 @@ void main() {
         isTrue,
       );
       expect(bloc.state.userInput, UserInputState.idle);
-      expect(bloc.state.streamingEnabled, isFalse);
+      expect(bloc.state.streamingDesired, isFalse);
 
       verify(() => recorder.startStreaming()).called(1);
       verify(() => recorder.stopStreaming()).called(1);

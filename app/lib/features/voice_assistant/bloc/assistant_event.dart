@@ -22,7 +22,14 @@ class ClientError extends AssistantEvent {
 // Recording Events
 class StartRecordingUserAudioInput extends AssistantEvent {}
 
-class StopRecordingUserAudioInput extends AssistantEvent {}
+class StopRecordingUserAudioInput extends AssistantEvent {
+  final bool userRequested;
+
+  const StopRecordingUserAudioInput({this.userRequested = true});
+
+  @override
+  List<Object?> get props => [userRequested];
+}
 
 class ClearRecordedAudio extends AssistantEvent {}
 
@@ -39,6 +46,17 @@ class ToggleStreamingMode extends AssistantEvent {
 class ServerVadSpeechStarted extends AssistantEvent {}
 
 class ServerVadSpeechStopped extends AssistantEvent {}
+
+class StreamingActivityChanged extends AssistantEvent {
+  final bool isActive;
+  const StreamingActivityChanged(this.isActive);
+
+  const StreamingActivityChanged.active() : isActive = true;
+  const StreamingActivityChanged.inactive() : isActive = false;
+
+  @override
+  List<Object?> get props => [isActive];
+}
 
 // Response Events
 class UserMessageTranscribed extends AssistantEvent {

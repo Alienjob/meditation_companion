@@ -26,17 +26,17 @@ class VoiceAssistantWidget extends StatelessWidget {
               children: [
                 IconButton(
                   key: streamingToggleKey,
-                  tooltip: state.streamingEnabled
+                  tooltip: state.streamingDesired
                       ? 'Disable streaming'
                       : 'Enable streaming',
                   icon: Icon(
-                    state.streamingEnabled
+                    state.streamingDesired
                         ? Icons.wifi_tethering
                         : Icons.wifi_tethering_off,
                   ),
-                  color: state.streamingEnabled ? Colors.deepPurple : null,
+                  color: state.streamingDesired ? Colors.deepPurple : null,
                   onPressed: () => context.read<AssistantBloc>().add(
-                        ToggleStreamingMode(!state.streamingEnabled),
+                        ToggleStreamingMode(!state.streamingDesired),
                       ),
                 ),
                 if (state.responseState == ResponseState.responding)
