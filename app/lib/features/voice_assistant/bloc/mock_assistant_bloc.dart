@@ -3,6 +3,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../services/audio_recorder.dart';
+import '../services/mock_audio_recorder.dart';
 import 'assistant_event.dart';
 import 'assistant_state.dart';
 import 'debug_assistant_event.dart';
@@ -18,8 +20,10 @@ import 'debug_assistant_event.dart';
 class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   Timer? _responseTimer;
   final Random _random = Random();
+  final MockAudioRecorder _recorder = MockAudioRecorder();
+  StreamSubscription<void>? _recorderSubscription;
 
-  MockAssistantBloc() : super(const AssistantState()) {
+  MockAssistantBloc() : super(AssistantState()) {
     on<ClientConnected>(_onClientConnected);
     on<ClientError>(_onClientError);
     on<StartRecordingUserAudioInput>(_onStartRecording);
@@ -36,6 +40,12 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     on<StreamingActivityChanged>(_onStreamingActivityChanged);
     on<UserMessageTranscribed>(_onUserMessageTranscribed);
     on<UpdateRecordingDuration>(_onUpdateRecordingDuration);
+    on<RecorderStateChanged>(_onRecorderStateChanged);
+
+    // Subscribe to recorder state changes
+    _recorderSubscription = _recorder.stateStream.listen((recorderState) {
+      add(RecorderStateChanged(recorderState));
+    });
 
     // Debug events
     on<DebugConnect>(_onDebugConnect);
@@ -51,8 +61,10 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   }
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
     _responseTimer?.cancel();
+    await _recorderSubscription?.cancel();
+    await _recorder.dispose();
     return super.close();
   }
 
@@ -73,7 +85,6 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     emit(state.copyWith(
       clientStatus: ClientStatus.error,
       lastError: () => event.error,
-      userInput: UserInputState.idle,
       responseState: ResponseState.idle,
     ));
   }
@@ -86,14 +97,13 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       return;
     }
 
-    emit(state.copyWith(
-      userInput: UserInputState.recording,
-      recordingDuration: Duration.zero,
-    ));
-
-    // In streaming mode, simulate VAD after some time
-    if (state.streamingDesired) {
+    // Recorder will emit state changes via stream
+    if (state.recorderState.mode == AudioRecorderMode.streaming) {
+      _recorder.startStreaming();
+      // Simulate VAD after some time
       add(ServerVadSpeechStarted());
+    } else {
+      _recorder.startRecording();
     }
   }
 
@@ -101,13 +111,19 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StopRecordingUserAudioInput event,
     Emitter<AssistantState> emit,
   ) {
-    if (state.userInput != UserInputState.recording) {
+    if (!state.recorderState.isActiveCapture) {
       return;
+    }
+
+    // Stop recorder - state will be updated via stream
+    if (state.recorderState.mode == AudioRecorderMode.streaming) {
+      _recorder.stopStreaming();
+    } else {
+      _recorder.stopRecording();
     }
 
     // Simulate processing and response
     emit(state.copyWith(
-      userInput: UserInputState.idle,
       responseState: ResponseState.responding,
     ));
 
@@ -161,12 +177,29 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   void _onToggleStreamingMode(
     ToggleStreamingMode event,
     Emitter<AssistantState> emit,
-  ) {
-    emit(state.copyWith(
-      streamingDesired: event.enabled,
-      streamingActive:
-          event.enabled && state.userInput == UserInputState.recording,
-    ));
+  ) async {
+    if (event.enabled) {
+      // Switch to streaming mode
+      // If currently recording in buffered mode, upgrade to streaming
+      if (state.recorderState.status == AudioRecorderStatus.recordingBuffered) {
+        await _recorder.stopRecording();
+        await _recorder.startStreaming();
+      }
+      // VAD flag will be updated when recording starts
+    } else {
+      // Disable streaming mode
+      if (state.recorderState.mode == AudioRecorderMode.streaming &&
+          state.recorderState.isActiveCapture) {
+        await _recorder.stopStreaming();
+        emit(state.copyWith(
+          streamedSoundContainsVoice: false,
+          responseState: ResponseState.responding,
+        ));
+        _simulateResponse();
+      } else {
+        emit(state.copyWith(streamedSoundContainsVoice: false));
+      }
+    }
   }
 
   void _onInterruptResponse(
@@ -210,9 +243,10 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     // In streaming mode, simulate VAD detecting speech start after 2 seconds
-    if (state.streamingDesired && state.userInput == UserInputState.recording) {
+    if (state.recorderState.mode == AudioRecorderMode.streaming &&
+        state.recorderState.isActiveCapture) {
       Future.delayed(const Duration(seconds: 2), () {
-        if (!isClosed && state.userInput == UserInputState.recording) {
+        if (!isClosed && state.recorderState.isActiveCapture) {
           add(ServerVadSpeechStopped());
         }
       });
@@ -224,7 +258,8 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     // VAD detected end of speech - auto-stop recording and get response
-    if (state.streamingDesired && state.userInput == UserInputState.recording) {
+    if (state.recorderState.mode == AudioRecorderMode.streaming &&
+        state.recorderState.isActiveCapture) {
       add(const StopRecordingUserAudioInput(userRequested: false));
     }
   }
@@ -234,9 +269,11 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ClearRecordedAudio event,
     Emitter<AssistantState> emit,
   ) {
+    // Emit state without recorded data
     emit(state.copyWith(
-      userInput: UserInputState.idle,
-      recordedAudio: () => null,
+      recorderState: state.recorderState.copyWith(
+        clearRecordedData: true,
+      ),
     ));
   }
 
@@ -245,9 +282,8 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     Emitter<AssistantState> emit,
   ) {
     // Simulate sending buffered audio
-    if (state.userInput == UserInputState.recorded) {
+    if (state.recorderState.recordedData != null) {
       emit(state.copyWith(
-        userInput: UserInputState.idle,
         responseState: ResponseState.responding,
       ));
       _simulateResponse();
@@ -258,7 +294,7 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StreamingActivityChanged event,
     Emitter<AssistantState> emit,
   ) {
-    emit(state.copyWith(streamingActive: event.isActive));
+    emit(state.copyWith(streamedSoundContainsVoice: event.isActive));
   }
 
   void _onUserMessageTranscribed(
@@ -295,7 +331,6 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     emit(state.copyWith(
       clientStatus: ClientStatus.error,
       lastError: () => event.message,
-      userInput: UserInputState.idle,
       responseState: ResponseState.idle,
     ));
   }
@@ -307,7 +342,6 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     emit(state.copyWith(
       clientStatus: ClientStatus.error,
       lastError: () => 'Network timeout',
-      userInput: UserInputState.idle,
       responseState: ResponseState.idle,
     ));
   }
@@ -346,9 +380,15 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   ) {
     emit(state.copyWith(
       clientStatus: ClientStatus.ready,
-      userInput: UserInputState.idle,
       responseState: ResponseState.idle,
       lastError: () => null,
     ));
+  }
+
+  void _onRecorderStateChanged(
+    RecorderStateChanged event,
+    Emitter<AssistantState> emit,
+  ) {
+    emit(state.copyWith(recorderState: event.recorderState));
   }
 }
