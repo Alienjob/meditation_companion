@@ -9,7 +9,7 @@ import '../widgets/chat_assistant_widget.dart';
 import '../widgets/chat_bottom_sheet_widget.dart';
 import '../widgets/ambient_sounds_bottom_sheet_widget.dart';
 import '../widgets/ambient_sounds_panel.dart';
-import '../../voice_assistant/widgets/mic_button/simple_mic_demo.dart';
+import '../../voice_assistant/widgets/assistant_mic_widget.dart';
 import '../../voice_assistant/widgets/debug_assistant_panel.dart';
 
 class MeditationSessionScreen extends StatelessWidget {
@@ -90,7 +90,7 @@ class _MicSurface extends StatelessWidget {
           children: [
             if (kDebugMode) const DebugAssistantPanel(),
             if (kDebugMode) const SizedBox(height: 16),
-            const SimpleMicDemo(),
+            const AssistantMicWidget(),
           ],
         ),
       ),
