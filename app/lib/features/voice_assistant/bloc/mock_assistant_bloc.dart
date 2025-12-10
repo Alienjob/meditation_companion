@@ -3,8 +3,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meditation_companion/core/logging/app_logger.dart';
 import '../services/audio_recorder.dart';
-import '../services/mock_audio_recorder.dart';
 import 'assistant_event.dart';
 import 'assistant_state.dart';
 import 'debug_assistant_event.dart';
@@ -20,10 +20,13 @@ import 'debug_assistant_event.dart';
 class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   Timer? _responseTimer;
   final Random _random = Random();
-  final MockAudioRecorder _recorder = MockAudioRecorder();
+  final AudioRecorder _recorder;
   StreamSubscription<void>? _recorderSubscription;
 
-  MockAssistantBloc() : super(AssistantState()) {
+  MockAssistantBloc({
+    required AudioRecorder recorder,
+  })  : _recorder = recorder,
+        super(AssistantState()) {
     on<ClientConnected>(_onClientConnected);
     on<ClientError>(_onClientError);
     on<StartRecordingUserAudioInput>(_onStartRecording);
@@ -64,7 +67,7 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   Future<void> close() async {
     _responseTimer?.cancel();
     await _recorderSubscription?.cancel();
-    await _recorder.dispose();
+    // Recorder is managed externally, don't dispose it here
     return super.close();
   }
 
@@ -93,6 +96,14 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     StartRecordingUserAudioInput event,
     Emitter<AssistantState> emit,
   ) {
+    // If assistant is responding, interrupt it first
+    if (state.responseState == ResponseState.responding) {
+      _responseTimer?.cancel();
+      emit(state.copyWith(
+        responseState: ResponseState.idle,
+      ));
+    }
+
     if (!state.canRecord) {
       return;
     }
@@ -178,14 +189,50 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ToggleStreamingMode event,
     Emitter<AssistantState> emit,
   ) async {
+    logDebug(
+      'Toggling streaming mode to ${event.enabled}',
+      domain: 'Voice Assistant',
+      feature: 'MockAssistantBloc',
+    );
     if (event.enabled) {
+      // Ignore if already in streaming mode or transitioning to it
+      if (state.recorderState.mode == AudioRecorderMode.streaming ||
+          state.recorderState.status ==
+              AudioRecorderStatus.preparingStreaming ||
+          state.recorderState.status == AudioRecorderStatus.streamingActive) {
+        logDebug('Already in streaming mode, ignoring',
+            domain: 'Voice Assistant', feature: 'MockAssistantBloc');
+        return;
+      }
+
       // Switch to streaming mode
       // If currently recording in buffered mode, upgrade to streaming
-      if (state.recorderState.status == AudioRecorderStatus.recordingBuffered) {
+      if (state.recorderState.status == AudioRecorderStatus.recordingBuffered ||
+          state.recorderState.status == AudioRecorderStatus.preparingBuffered) {
+        logDebug('Upgrading from buffered to streaming',
+            domain: 'Voice Assistant', feature: 'MockAssistantBloc');
+        // Stop buffered recording (will emit finalizingBuffered → idle)
         await _recorder.stopRecording();
+        // Start streaming after stop completes
         await _recorder.startStreaming();
+        // Simulate VAD after some time
+        add(ServerVadSpeechStarted());
+      } else if (state.recorderState.status == AudioRecorderStatus.idle) {
+        logDebug('Starting streaming from idle',
+            domain: 'Voice Assistant', feature: 'MockAssistantBloc');
+        // Start streaming from idle (e.g., quick swipe up)
+        await _recorder.startStreaming();
+        // Simulate VAD after some time
+        add(ServerVadSpeechStarted());
+      } else {
+        // In transition state (finalizingBuffered, etc), ignore
+        logDebug(
+          'Recorder in transition state ${state.recorderState.status}, ignoring',
+          domain: 'Voice Assistant',
+          feature: 'MockAssistantBloc',
+        );
+        return;
       }
-      // VAD flag will be updated when recording starts
     } else {
       // Disable streaming mode
       if (state.recorderState.mode == AudioRecorderMode.streaming &&
