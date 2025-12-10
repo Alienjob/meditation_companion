@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meditation_companion/config/env_config.dart';
+import 'package:meditation_companion/core/connectivity/connectivity_mixin.dart';
+import 'package:meditation_companion/core/connectivity/cubit/connectivity_cubit.dart';
+import 'package:meditation_companion/core/connectivity/widgets/connectivity_banner.dart';
 import 'package:meditation_companion/core/logging/app_logger.dart';
+import 'package:meditation_companion/features/analytics/services/analytics_service.dart';
 import 'package:openai_realtime_dart/openai_realtime_dart.dart';
 
 import '../meditation/services/audio_service.dart';
@@ -32,6 +36,7 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
   late final RealtimeClient _client;
   VoiceAssistantRepository? _repository;
   AssistantBloc? _assistantBloc;
+  ConnectivityCubit? _connectivityCubit;
   bool _initialized = false;
 
   void _debug(String feature, String message) {
@@ -70,6 +75,7 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
 
     final audioService = context.read<AudioService>();
     final recorder = context.read<AudioRecorder>();
+    final analyticsService = context.read<AnalyticsService>();
 
     _repository = VoiceAssistantRepository(_client);
     _assistantBloc = AssistantBloc(
@@ -77,6 +83,18 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
       recorder: recorder,
       client: _client,
     );
+
+    // Initialize connectivity monitoring for services with ConnectivityMixin
+    final servicesWithConnectivity = <String, dynamic>{};
+    if (analyticsService is ConnectivityMixin) {
+      servicesWithConnectivity['analytics'] = analyticsService;
+    }
+
+    if (servicesWithConnectivity.isNotEmpty) {
+      _connectivityCubit = ConnectivityCubit(
+        services: servicesWithConnectivity.cast<String, ConnectivityMixin>(),
+      );
+    }
 
     _configureRealtimeClient();
   }
@@ -246,19 +264,41 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
       return widget.child;
     }
 
-    return RepositoryProvider<VoiceAssistantRepository>.value(
+    Widget child = RepositoryProvider<VoiceAssistantRepository>.value(
       value: repository,
       child: BlocProvider<AssistantBloc>.value(
         value: assistantBloc,
         child: widget.child,
       ),
     );
+
+    // Wrap with connectivity monitoring if cubit is available
+    final connectivityCubit = _connectivityCubit;
+    if (connectivityCubit != null) {
+      child = BlocProvider<ConnectivityCubit>.value(
+        value: connectivityCubit,
+        child: Stack(
+          children: [
+            child,
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ConnectivityBanner(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return child;
   }
 
   @override
   void dispose() {
     unawaited(_client.disconnect());
     _assistantBloc?.close();
+    _connectivityCubit?.close();
     super.dispose();
   }
 }
