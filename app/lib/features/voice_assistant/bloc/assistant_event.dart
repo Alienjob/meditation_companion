@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
+import '../services/audio_recorder.dart';
 
 abstract class AssistantEvent extends Equatable {
   const AssistantEvent();
@@ -122,4 +123,13 @@ class UpdateRecordingDuration extends AssistantEvent {
 
   @override
   List<Object?> get props => [];
+}
+
+class RecorderStateChanged extends AssistantEvent {
+  final AudioRecorderState recorderState;
+
+  const RecorderStateChanged(this.recorderState);
+
+  @override
+  List<Object?> get props => [recorderState];
 }
