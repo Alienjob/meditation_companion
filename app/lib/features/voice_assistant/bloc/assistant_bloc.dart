@@ -260,6 +260,15 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
       _featureRecording,
       'Start recording requested; mode=${state.recorderState.mode} canRecord=${state.canRecord}',
     );
+
+    // If assistant is responding, interrupt it first
+    if (state.responseState == ResponseState.responding) {
+      _info(_featureRecording, 'Interrupting response to start recording');
+      add(InterruptResponse());
+      // Wait a frame for interrupt to process
+      await Future.delayed(Duration.zero);
+    }
+
     if (!state.canRecord) {
       _debug(
         _featureRecording,
@@ -502,8 +511,22 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         return;
       }
 
-      // Mode will be set when starting streaming recorder
-      // No need to emit here
+      // Start streaming if not already active
+      if (!state.recorderState.isActiveCapture &&
+          state.recorderState.mode != AudioRecorderMode.streaming) {
+        _debug(_featureStreaming, 'Starting streaming mode from idle');
+        try {
+          await _beginStreamingCapture();
+          emit(state.copyWith(streamedSoundContainsVoice: false));
+        } catch (error) {
+          _error(_featureStreaming, 'Failed to start streaming: $error',
+              error: error);
+          emit(state.copyWith(
+            clientStatus: ClientStatus.error,
+            lastError: () => 'Failed to start streaming: $error',
+          ));
+        }
+      }
       return;
     }
 
