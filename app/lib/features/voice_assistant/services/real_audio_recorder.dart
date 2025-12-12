@@ -251,6 +251,20 @@ class RealAudioRecorder implements AudioRecorder {
   }
 
   @override
+  Future<void> pauseStreaming() async {
+    // Not implemented in real recorder
+    // This method is only used in mock for testing
+    _recorderDebug('pauseStreaming() not implemented in RealAudioRecorder');
+  }
+
+  @override
+  Future<void> resumeStreaming() async {
+    // Not implemented in real recorder
+    // This method is only used in mock for testing
+    _recorderDebug('resumeStreaming() not implemented in RealAudioRecorder');
+  }
+
+  @override
   Future<void> dispose() async {
     await _recordingSubscription?.cancel();
     _resetBuffer();

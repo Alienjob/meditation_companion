@@ -20,7 +20,6 @@ class MockAudioRecorder implements AudioRecorder {
       StreamController<AudioRecorderState>.broadcast();
 
   AudioRecorderState _state = AudioRecorderState.idle();
-  final List<Timer> _pendingTimers = [];
 
   Stopwatch? _recordingStopwatch;
   Timer? _durationUpdateTimer;
@@ -150,6 +149,57 @@ class MockAudioRecorder implements AudioRecorder {
     _emit(AudioRecorderState.idle());
   }
 
+  /// Pause streaming temporarily without going to idle
+  /// Used when assistant is responding but stream should resume after
+  Future<void> pauseStreaming() async {
+    if (!_isStreaming) {
+      throw StateError('No streaming in progress');
+    }
+
+    _emit(_state.copyWith(
+      status: AudioRecorderStatus.finalizingStreaming,
+      mode: AudioRecorderMode.streaming,
+    ));
+
+    if (_stateTransitionDelay != null) {
+      await Future.delayed(_stateTransitionDelay!);
+    }
+
+    // Keep _isStreaming = true, pause duration updates but preserve stopwatch
+    _pauseDurationUpdates();
+  }
+
+  /// Resume streaming after pause
+  Future<void> resumeStreaming() async {
+    if (!_isStreaming) {
+      throw StateError('No streaming to resume');
+    }
+
+    _emit(_state.copyWith(
+      status: AudioRecorderStatus.preparingStreaming,
+      mode: AudioRecorderMode.streaming,
+    ));
+
+    if (_stateTransitionDelay != null) {
+      await Future.delayed(_stateTransitionDelay!);
+    }
+
+    if (_isStreaming) {
+      // Resume or restart stopwatch
+      if (_recordingStopwatch == null) {
+        _recordingStopwatch = Stopwatch()..start();
+      } else {
+        _recordingStopwatch!.start();
+      }
+      _startDurationUpdates();
+      _emit(_state.copyWith(
+        status: AudioRecorderStatus.streamingActive,
+        mode: AudioRecorderMode.streaming,
+        recordingDuration: _recordingStopwatch!.elapsed,
+      ));
+    }
+  }
+
   void _startDurationUpdates() {
     _durationUpdateTimer?.cancel();
     _durationUpdateTimer = Timer.periodic(
@@ -161,9 +211,17 @@ class MockAudioRecorder implements AudioRecorder {
         }
       },
     );
-    _pendingTimers.add(_durationUpdateTimer!);
   }
 
+  /// Pause duration updates temporarily, preserving stopwatch for continuation
+  void _pauseDurationUpdates() {
+    _durationUpdateTimer?.cancel();
+    _durationUpdateTimer = null;
+    _recordingStopwatch?.stop();
+    // Keep _recordingStopwatch to continue from same position on resume
+  }
+
+  /// Stop duration updates completely and reset stopwatch
   void _stopDurationUpdates() {
     _durationUpdateTimer?.cancel();
     _durationUpdateTimer = null;
@@ -176,10 +234,6 @@ class MockAudioRecorder implements AudioRecorder {
     _isRecording = false;
     _isStreaming = false;
     _stopDurationUpdates();
-    for (final timer in _pendingTimers) {
-      timer.cancel();
-    }
-    _pendingTimers.clear();
     await _controller.close();
     await _stateController.close();
   }

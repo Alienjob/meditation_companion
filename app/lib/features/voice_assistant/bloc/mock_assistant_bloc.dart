@@ -121,28 +121,79 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
   void _onStopRecording(
     StopRecordingUserAudioInput event,
     Emitter<AssistantState> emit,
-  ) {
+  ) async {
     if (!state.recorderState.isActiveCapture) {
       return;
     }
 
+    final isStreaming = state.recorderState.mode == AudioRecorderMode.streaming;
+
+    logDebug(
+      'Stopping ${isStreaming ? "streaming" : "buffered"} recording',
+      domain: 'Voice Assistant',
+      feature: 'MockAssistantBloc',
+    );
+
     // Stop recorder - state will be updated via stream
-    if (state.recorderState.mode == AudioRecorderMode.streaming) {
-      _recorder.stopStreaming();
+    if (isStreaming) {
+      // Capture VAD flag BEFORE awaiting stopStreaming to avoid losing it
+      final hadVoiceActivity = state.streamedSoundContainsVoice;
+
+      logDebug(
+        'Stopping streaming, VAD flag captured: $hadVoiceActivity',
+        domain: 'Voice Assistant',
+        feature: 'MockAssistantBloc',
+      );
+
+      await _recorder.stopStreaming();
+
+      // Check if VAD detected voice - only respond if speech was heard
+      if (hadVoiceActivity) {
+        logDebug(
+          'VAD detected voice, starting response',
+          domain: 'Voice Assistant',
+          feature: 'MockAssistantBloc',
+        );
+
+        // Clear VAD flag and start response
+        emit(state.copyWith(
+          streamedSoundContainsVoice: false,
+          responseState: ResponseState.responding,
+        ));
+
+        // Simulate response after 1 second
+        _responseTimer?.cancel();
+        _responseTimer = Timer(const Duration(seconds: 1), () {
+          _simulateResponse();
+        });
+      } else {
+        logDebug(
+          'No voice detected by VAD, returning to idle without response',
+          domain: 'Voice Assistant',
+          feature: 'MockAssistantBloc',
+        );
+
+        // Just return to idle, no response needed
+        emit(state.copyWith(
+          streamedSoundContainsVoice: false,
+          responseState: ResponseState.idle,
+        ));
+      }
     } else {
+      // Buffered mode - always send what was recorded
       _recorder.stopRecording();
+
+      // Simulate processing and response
+      emit(state.copyWith(
+        responseState: ResponseState.responding,
+      ));
+
+      // Simulate response after 1 second
+      _responseTimer?.cancel();
+      _responseTimer = Timer(const Duration(seconds: 1), () {
+        _simulateResponse();
+      });
     }
-
-    // Simulate processing and response
-    emit(state.copyWith(
-      responseState: ResponseState.responding,
-    ));
-
-    // Simulate response after 1 second
-    _responseTimer?.cancel();
-    _responseTimer = Timer(const Duration(seconds: 1), () {
-      _simulateResponse();
-    });
   }
 
   void _simulateResponse() {
@@ -215,15 +266,23 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         await _recorder.stopRecording();
         // Start streaming after stop completes
         await _recorder.startStreaming();
-        // Simulate VAD after some time
-        add(ServerVadSpeechStarted());
+        // VAD will be auto-started when recorder transitions to streamingActive
+        logDebug(
+          'Streaming started, waiting for streamingActive state to trigger VAD',
+          domain: 'Voice Assistant',
+          feature: 'MockAssistantBloc',
+        );
       } else if (state.recorderState.status == AudioRecorderStatus.idle) {
         logDebug('Starting streaming from idle',
             domain: 'Voice Assistant', feature: 'MockAssistantBloc');
         // Start streaming from idle (e.g., quick swipe up)
         await _recorder.startStreaming();
-        // Simulate VAD after some time
-        add(ServerVadSpeechStarted());
+        // VAD will be auto-started when recorder transitions to streamingActive
+        logDebug(
+          'Streaming started, waiting for streamingActive state to trigger VAD',
+          domain: 'Voice Assistant',
+          feature: 'MockAssistantBloc',
+        );
       } else {
         // In transition state (finalizingBuffered, etc), ignore
         logDebug(
@@ -289,25 +348,88 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     ServerVadSpeechStarted event,
     Emitter<AssistantState> emit,
   ) {
-    // In streaming mode, simulate VAD detecting speech start after 2 seconds
-    if (state.recorderState.mode == AudioRecorderMode.streaming &&
+    logDebug(
+      'ServerVadSpeechStarted: mode=${state.recorderState.mode}, '
+      'status=${state.recorderState.status}, '
+      'responseState=${state.responseState}',
+      domain: 'Voice Assistant',
+      feature: 'MockAssistantBloc',
+    );
+
+    // Set VAD flag for visual indication
+    emit(state.copyWith(streamedSoundContainsVoice: true));
+
+    // If assistant is responding AND streaming is active, interrupt the response
+    if (state.responseState == ResponseState.responding &&
+        state.recorderState.mode == AudioRecorderMode.streaming &&
         state.recorderState.isActiveCapture) {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (!isClosed && state.recorderState.isActiveCapture) {
-          add(ServerVadSpeechStopped());
-        }
-      });
+      logDebug(
+        'Interrupting response (streaming is active)',
+        domain: 'Voice Assistant',
+        feature: 'MockAssistantBloc',
+      );
+      _responseTimer?.cancel();
+
+      emit(state.copyWith(
+        responseState: ResponseState.idle,
+      ));
+    } else if (state.responseState == ResponseState.responding) {
+      logDebug(
+        'Cannot interrupt response: streaming is not active',
+        domain: 'Voice Assistant',
+        feature: 'MockAssistantBloc',
+      );
     }
   }
 
   void _onServerVadSpeechStopped(
     ServerVadSpeechStopped event,
     Emitter<AssistantState> emit,
-  ) {
-    // VAD detected end of speech - auto-stop recording and get response
+  ) async {
+    logDebug(
+      'ServerVadSpeechStopped: mode=${state.recorderState.mode}, '
+      'status=${state.recorderState.status}',
+      domain: 'Voice Assistant',
+      feature: 'MockAssistantBloc',
+    );
+
+    // Clear VAD flag
+    emit(state.copyWith(streamedSoundContainsVoice: false));
+
+    // If in streaming mode, pause stream and start response
     if (state.recorderState.mode == AudioRecorderMode.streaming &&
         state.recorderState.isActiveCapture) {
-      add(const StopRecordingUserAudioInput(userRequested: false));
+      logDebug(
+        'VAD detected speech end, pausing stream and starting response',
+        domain: 'Voice Assistant',
+        feature: 'MockAssistantBloc',
+      );
+
+      // Pause streaming (finalizingStreaming state for visual feedback)
+      await _recorder.pauseStreaming();
+
+      // Start response
+      emit(state.copyWith(
+        responseState: ResponseState.responding,
+      ));
+
+      // Simulate response
+      _responseTimer?.cancel();
+      _responseTimer = Timer(const Duration(seconds: 1), () {
+        _simulateResponse();
+      });
+
+      // Resume streaming after brief pause (simulating response starting)
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        if (!isClosed && state.responseState == ResponseState.responding) {
+          logDebug(
+            'Resuming streaming during response',
+            domain: 'Voice Assistant',
+            feature: 'MockAssistantBloc',
+          );
+          await _recorder.resumeStreaming();
+        }
+      });
     }
   }
 
@@ -436,6 +558,21 @@ class MockAssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     RecorderStateChanged event,
     Emitter<AssistantState> emit,
   ) {
+    final oldStatus = state.recorderState.status;
+    final newStatus = event.recorderState.status;
+
     emit(state.copyWith(recorderState: event.recorderState));
+
+    // Log only status changes, not duration updates
+    if (oldStatus != newStatus) {
+      logDebug(
+        'Recorder state changed: $oldStatus → $newStatus',
+        domain: 'Voice Assistant',
+        feature: 'MockAssistantBloc',
+      );
+    }
+
+    // Note: VAD is controlled manually via debug panel buttons
+    // No automatic VAD activation to allow testing different scenarios
   }
 }
