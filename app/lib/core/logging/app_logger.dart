@@ -132,9 +132,9 @@ class AppLogger {
       stackTrace: stackTrace,
     );
 
-    if (!_LogSettings.isEnabled(tags)) {
-      return;
-    }
+    // if (!_LogSettings.isEnabled(tags)) {
+    //   return;
+    // }
 
     final resolvedMessage = _evaluateMessage(message);
 
