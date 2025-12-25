@@ -82,8 +82,8 @@ class _VoiceAssistantScopeState extends State<VoiceAssistantScope> {
 
     _repository = VoiceAssistantRepository(_client);
 
-    // Use MockAssistantBloc in debug mode for testing with debug events
-    if (kDebugMode) {
+    // Use MockAssistantBloc when USE_MOCK_ASSISTANT=true
+    if (EnvConfig.useMockAssistant) {
       _assistantBloc = MockAssistantBloc(
         recorder: recorder,
       );

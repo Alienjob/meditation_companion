@@ -53,6 +53,11 @@ class EnvConfig {
         defaultValue: false,
       );
 
+  static bool get useMockAssistant => const bool.fromEnvironment(
+        'USE_MOCK_ASSISTANT',
+        defaultValue: false,
+      );
+
   static bool isValid() {
     return supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
   }

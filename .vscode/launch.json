@@ -8,6 +8,7 @@
             "type": "dart",
             "args": [
                 "--dart-define=USE_MOCK_AUDIO_RECORDER=false",
+                "--dart-define=USE_MOCK_ASSISTANT=false",
                 "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
                 "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
@@ -22,6 +23,7 @@
             "type": "dart",
             "args": [
                 "--dart-define=USE_MOCK_AUDIO_RECORDER=false",
+                "--dart-define=USE_MOCK_ASSISTANT=false",
                 "--dart-define=SUPPRESSED_LOG_TAGS=auth:*,meditation:*,voice_assistant:*,chat:*,app:*",
                 "--dart-define=SUPABASE_URL=${input:localSupabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:localSupabaseAnonKey}",
@@ -37,6 +39,7 @@
             "type": "dart",
             "args": [
                 "--dart-define=USE_MOCK_AUDIO_RECORDER=false",
+                "--dart-define=USE_MOCK_ASSISTANT=false",
                 "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:supabaseAnonKey}",
                 "--dart-define=OPENAI_API_KEY=${input:openApiKey}",
@@ -49,6 +52,7 @@
             "type": "dart",
             "args": [
                 "--dart-define=USE_MOCK_AUDIO_RECORDER=false",
+                "--dart-define=USE_MOCK_ASSISTANT=false",
                 "--dart-define=SUPPRESSED_LOG_TAGS=auth:*,meditation:*,voice_assistant:*,chat:*,app:*",
                 "--dart-define=SUPABASE_URL=${input:localSupabaseUrl}",
                 "--dart-define=SUPABASE_ANON_KEY=${input:localSupabaseAnonKey}",
