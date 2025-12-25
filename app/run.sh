@@ -15,6 +15,7 @@ OPENAI_API_KEY=$(jq -r '.openApiKey' "$SECRETS_FILE")
 echo "Starting Flutter app with environment variables..."
 
 flutter run -d chrome \
+  --dart-define=USE_MOCK_AUDIO_RECORDER=false \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=OPENAI_API_KEY="$OPENAI_API_KEY"

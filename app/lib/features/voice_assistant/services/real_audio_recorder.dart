@@ -77,6 +77,7 @@ class RealAudioRecorder implements AudioRecorder {
 
   Stopwatch? _recordingStopwatch;
   DateTime? _lastDurationUpdate;
+  bool _isPaused = false;
 
   @override
   AudioRecorderState get currentState => _state;
@@ -195,6 +196,7 @@ class RealAudioRecorder implements AudioRecorder {
       throw const AudioRecorderException('Recorder already active');
     }
 
+    _isPaused = false;
     _ensureStreamController();
     _recorderDebug('RealAudioRecorder: startStreaming()');
     _emitState(
@@ -252,16 +254,21 @@ class RealAudioRecorder implements AudioRecorder {
 
   @override
   Future<void> pauseStreaming() async {
-    // Not implemented in real recorder
-    // This method is only used in mock for testing
-    _recorderDebug('pauseStreaming() not implemented in RealAudioRecorder');
+    if (_activeMode != AudioRecorderMode.streaming) {
+      return;
+    }
+    _isPaused = true;
+    _recorderDebug(
+        'RealAudioRecorder: streaming paused (chunks will be ignored)');
   }
 
   @override
   Future<void> resumeStreaming() async {
-    // Not implemented in real recorder
-    // This method is only used in mock for testing
-    _recorderDebug('resumeStreaming() not implemented in RealAudioRecorder');
+    if (_activeMode != AudioRecorderMode.streaming) {
+      return;
+    }
+    _isPaused = false;
+    _recorderDebug('RealAudioRecorder: streaming resumed');
   }
 
   @override
@@ -419,6 +426,8 @@ class RealAudioRecorder implements AudioRecorder {
 
       _recordingSubscription = stream.listen(
         (chunk) {
+          if (_isPaused) return;
+
           final controller = _streamController;
           if (controller != null && !controller.isClosed) {
             controller.add(chunk);

@@ -48,6 +48,11 @@ class EnvConfig {
     return value;
   }
 
+  static bool get useMockAudioRecorder => const bool.fromEnvironment(
+        'USE_MOCK_AUDIO_RECORDER',
+        defaultValue: false,
+      );
+
   static bool isValid() {
     return supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
   }

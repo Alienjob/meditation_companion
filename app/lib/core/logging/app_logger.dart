@@ -399,7 +399,7 @@ class _TagPattern {
 class _LogSettings {
   static final bool _releaseMode = kReleaseMode;
   static final List<_TagPattern> _suppressedPatterns = _parsePatterns(
-    const String.fromEnvironment('LOG_TAGS', defaultValue: ''),
+    const String.fromEnvironment('SUPPRESSED_LOG_TAGS', defaultValue: ''),
   );
 
   static bool isEnabled(LogTags tags) {

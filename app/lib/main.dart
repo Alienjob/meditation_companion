@@ -111,8 +111,8 @@ class _MainAppState extends State<MainApp> {
     super.initState();
     _timerService = RealTimerService();
     _audioService = RealAudioService();
-    // Use MockAudioRecorder in debug mode for testing
-    if (kDebugMode) {
+
+    if (EnvConfig.useMockAudioRecorder) {
       _audioRecorder = MockAudioRecorder(
         stateTransitionDelay: const Duration(seconds: 1),
       );

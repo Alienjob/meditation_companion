@@ -559,6 +559,13 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
     if (!state.streamedSoundContainsVoice) {
       emit(state.copyWith(streamedSoundContainsVoice: true));
     }
+
+    // If assistant is responding, interrupt it (barge-in)
+    if (state.responseState == ResponseState.responding) {
+      _debug(
+          _featureStreaming, 'Interrupting response due to VAD speech start');
+      add(InterruptResponse());
+    }
   }
 
   void _onServerVadSpeechStopped(
@@ -570,8 +577,12 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         state.recorderState.isActiveCapture) {
       _debug(
         _featureStreaming,
-        'Server VAD segment ended; committing buffered audio while keeping stream alive',
+        'Server VAD segment ended; pausing stream and committing buffered audio',
       );
+
+      // Pause streaming to prevent self-interruption
+      unawaited(_recorder.pauseStreaming());
+
       emit(state.copyWith(
         responseState: ResponseState.responding,
         streamedSoundContainsVoice: false,
@@ -580,6 +591,14 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
         try {
           await _commitPendingAudioBuffer();
           await _client.createResponse();
+
+          // Resume streaming after a short delay to allow response to start
+          // and avoid immediate echo pickup
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!isClosed && state.responseState == ResponseState.responding) {
+            _debug(_featureStreaming, 'Resuming streaming after VAD pause');
+            await _recorder.resumeStreaming();
+          }
         } catch (error, stackTrace) {
           _error(
             _featureStreaming,
@@ -588,6 +607,8 @@ class AssistantBloc extends Bloc<AssistantEvent, AssistantState> {
             stackTrace: stackTrace,
           );
           add(ClientError(error.toString()));
+          // Ensure we resume if something failed
+          await _recorder.resumeStreaming();
         }
       }());
     }
